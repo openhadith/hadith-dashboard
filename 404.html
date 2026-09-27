@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Open Hadith — design comps</title>
+<script>
+  // The comps moved from the repository root into design/; old links land here
+  // (GitHub Pages serves this page for any missing path) and are sent on.
+  (function () {
+    var path = location.pathname;
+    if (!/\/design\//.test(path) && /\/[^/]+\.(dc\.html|js)$/.test(path)) {
+      location.replace(path.replace(/\/([^/]+)$/, '/design/$1') + location.search + location.hash);
+    }
+  })();
+</script>
+<p>Not found. The design comps are in <a href="./design/">design/</a>.</p>
