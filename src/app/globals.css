@@ -1,0 +1,616 @@
+/*
+ * Dashboard shell.
+ *
+ * Every positional property is LOGICAL (inset-inline-start, padding-inline,
+ * border-inline) because this dashboard runs RTL for Kurdish; the whole frame
+ * mirrors from these rules alone.
+ *
+ * Ant Design supplies the components and `src/lib/theme.ts` maps its tokens
+ * onto the brand palette. What lives here is the furniture AntD does not own:
+ * the rail, the header, the working surface, cards and stat tiles.
+ */
+
+:root {
+  --rail-w: 248px;
+  --rail-w-collapsed: 64px;
+
+  --canvas: #fffdf9;
+  --card: #ffffff;
+  --card-border: #efeae0;
+  --card-border-soft: #f5f2ec;
+  --sunken: #faf8f3;
+
+  --ink: #221f1a;
+  --ink-muted: #5c564a;
+  --ink-faint: #8a8272;
+  --ink-ghost: #a89f8c;
+
+  --emerald: #2f6f5b;
+  --gold: #c79a3a;
+
+  /* Spacing scale. Every gap, gutter and pad in this file comes from here so
+     the whole shell breathes from one set of numbers. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  /* Layered rather than flat: a near-invisible contact shadow plus a wider,
+     softer one, which is what reads as "lifted" instead of "outlined". */
+  --shadow-sm: 0 1px 2px rgba(35, 30, 20, 0.04), 0 1px 3px rgba(35, 30, 20, 0.03);
+  --shadow-md: 0 4px 16px rgba(35, 30, 20, 0.07), 0 1px 3px rgba(35, 30, 20, 0.04);
+  --shadow-lg: 0 12px 32px rgba(35, 30, 20, 0.1), 0 2px 6px rgba(35, 30, 20, 0.04);
+}
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  /* Outfit carries the interface and the numerals; Vazirmatn picks up the
+     Kurdish per glyph, since Outfit has no Arabic script at all. */
+  font-family: var(--font-outfit), var(--font-vazir), 'Noto Sans Arabic', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* An app shell owns the viewport; only the working surface scrolls. */
+  overflow: hidden;
+}
+
+/* Links: emerald and unadorned. Structural links — a whole row, a tile, a nav
+   item — opt out with .plain and keep the surrounding ink. */
+a {
+  color: var(--emerald);
+  text-decoration: none;
+}
+a:hover {
+  color: #235445;
+}
+a.plain,
+a.plain:hover {
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(34, 31, 26, 0.16);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(34, 31, 26, 0.28);
+}
+
+/* ==========================================================================
+   Rail — dark, fixed, with a gold thumb on the active row
+   ========================================================================== */
+
+.rail {
+  position: fixed;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+  width: var(--rail-w);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #17211d 0%, #121a17 100%);
+  border-inline-end: 1px solid #24302b;
+  overflow: hidden;
+}
+
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 64px;
+  flex: none;
+  padding-inline: var(--sp-5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-decoration: none;
+}
+
+.rail-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--emerald);
+  color: #fff;
+  font-family: var(--font-amiri), serif;
+  font-weight: 700;
+  font-size: 19px;
+}
+
+.rail-wordmark {
+  min-width: 0;
+  line-height: 1.2;
+}
+.rail-wordmark b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+.rail-wordmark span {
+  display: block;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.42);
+  white-space: nowrap;
+}
+
+.rail-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-block: var(--sp-3) var(--sp-5);
+}
+.rail-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.rail-group {
+  padding: var(--sp-5) var(--sp-5) var(--sp-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.36);
+  white-space: nowrap;
+}
+
+.rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding-inline: 17px 14px;
+  border: 0;
+  border-inline-start: 3px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.52);
+  font-family: inherit;
+  font-size: 15px;
+  text-align: start;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.rail-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.82);
+}
+.rail-item:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+.rail-item.is-active {
+  background: rgba(255, 255, 255, 0.06);
+  border-inline-start-color: var(--gold);
+  color: #fff;
+  font-weight: 500;
+}
+
+.rail-item .anticon {
+  font-size: 15px;
+  flex: none;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.13s ease;
+}
+.rail-item:hover .anticon {
+  color: #fff;
+}
+.rail-item.is-active .anticon {
+  color: var(--gold);
+}
+
+.rail-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Count on a nav row — a quiet chip, not an alarm. */
+.rail-count {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+}
+.rail-item.is-active .rail-count {
+  background: rgba(199, 154, 58, 0.22);
+  color: #e8c98a;
+}
+
+/* Smart collections: a dot, a label, a count. */
+.rail-collection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--sp-2) var(--sp-5);
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 13.5px;
+  text-decoration: none;
+  transition: color 0.13s ease;
+}
+.rail-collection:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+.rail-collection i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+.rail-collection span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-collection b {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+/* ==========================================================================
+   Shell — sticky header over an edge-to-edge working surface
+   ========================================================================== */
+
+.shell {
+  height: 100%;
+  margin-inline-start: var(--rail-w);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shell-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: 64px;
+  padding-inline: var(--sp-7);
+  background: var(--card);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.shell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  min-width: 0;
+}
+
+/* The scrolling working surface. */
+.surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-7) var(--sp-7) var(--sp-8);
+  background: var(--canvas);
+  container-type: inline-size;
+  container-name: surface;
+}
+
+/* A secondary column beside the surface (activity, inspectors). */
+.side-rail {
+  width: 348px;
+  flex: none;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-6) var(--sp-6) var(--sp-8);
+  background: var(--sunken);
+  border-inline-end: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.shell-status {
+  flex: none;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding-inline: var(--sp-7);
+  background: #17211d;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   Page furniture
+   ========================================================================== */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-7);
+}
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.page-sub {
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-faint);
+}
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.card + .card {
+  margin-top: var(--sp-5);
+}
+.card-pad {
+  padding: var(--sp-6);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6);
+  border-bottom: 1px solid var(--card-border-soft);
+}
+.card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.card-extra {
+  margin-inline-start: auto;
+  font-size: 14px;
+  color: var(--ink-faint);
+}
+/* Tables sit edge to edge inside a card. */
+.card .ant-table-wrapper {
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
+
+/* A labelled group of cards. A dashboard screen carries a lot of unrelated
+   information; without these the page is one undifferentiated stack and the
+   eye has nowhere to rest. The rule runs to the end of the row so the label
+   reads as a heading rather than as floating text. */
+.section {
+  margin-bottom: var(--sp-8);
+}
+.section:last-child {
+  margin-bottom: 0;
+}
+/* Inside a section the band's own gap already separates it from the next. */
+.section > .stat-grid:last-child,
+.section > .card:last-child {
+  margin-bottom: 0;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+.section-title {
+  margin: 0;
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+}
+.section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--card-border);
+}
+/* An action parked at the end of the rule keeps the row from looking empty. */
+.section-head > .section-action {
+  flex: none;
+  order: 3;
+  font-size: 14px;
+}
+
+/* Two cards side by side, collapsing to one column when there is no room. */
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: var(--sp-5);
+}
+.split > .card + .card {
+  margin-top: 0;
+}
+
+/* ==========================================================================
+   Stat tiles
+   ========================================================================== */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-6);
+}
+/* Beside a side rail the surface is ~770px: four tiles across leaves 178px
+   each, which is the cramping this layout is trying to avoid. Two rows of two
+   give each tile room to breathe instead. */
+@container surface (max-width: 1000px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container surface (max-width: 480px) {
+  .stat-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.stat-tile {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: var(--sp-6);
+  height: 100%;
+  color: inherit;
+  text-decoration: none;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+.stat-tile:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: #e5ddcd;
+}
+.stat-tile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.stat-tile-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  margin-bottom: var(--sp-2);
+  line-height: 1.35;
+}
+.stat-tile-value {
+  font-size: clamp(26px, 2.2vw, 34px);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-tile-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-sm);
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+}
+.stat-tile-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: var(--sp-3);
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.stat-tile-trend.up {
+  color: #2f6f5b;
+  background: #e9f2ec;
+}
+.stat-tile-trend.down {
+  color: #a8412a;
+  background: #f7ece9;
+}
+.stat-tile-trend.flat {
+  color: var(--ink-faint);
+  background: #f2efe7;
+}
+.stat-tile-hint {
+  margin-top: var(--sp-2);
+  font-size: 13px;
+  color: var(--ink-ghost);
+  line-height: 1.4;
+}
+
+/* ==========================================================================
+   Misc
+   ========================================================================== */
+
+/* Keyboard cursor row in the validation queue. The queue is driven by ↑↓ as
+   much as by the mouse, so the focused row needs a marker that survives AntD's
+   own hover and selection backgrounds. */
+.studio-row-cursor > td {
+  background: var(--sunken) !important;
+  box-shadow: inset 3px 0 0 0 var(--emerald);
+}
+
+/* A horizontally scrolling row of filter chips. The negative margin lets the
+   row bleed into the toolbar's gutter so a scrolled chip runs to the edge
+   rather than stopping short of it. */
+.chip-row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  margin-inline: calc(var(--sp-7) * -1);
+  padding-inline: var(--sp-7);
+}
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
+.chip-row > .ant-segmented {
+  width: max-content;
+}
+
+/* Arabic text — matn, narrator names — is set in Amiri throughout. */
+.matn {
+  font-family: var(--font-amiri), serif;
+  line-height: 1.9;
+}
+
+.clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
