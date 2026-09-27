@@ -25,12 +25,14 @@ interface NarratorHit { id: string; name: string | null; shohra: string | null; 
  * way in and out and nothing else has to know.
  */
 export default function IsnadEditor({
-  hadithId, links, edited, open, onClose, onSaved,
+  hadithId, links, edited, sanadCount, open, onClose, onSaved,
 }: {
   hadithId: string;
   /** Collector-first, as stored. */
   links: EditableLink[];
   edited: boolean;
+  /** More than one means the chain shown is flattened and cannot be published. */
+  sanadCount: number;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -142,7 +144,7 @@ export default function IsnadEditor({
       onClose={onClose}
       size={620}
       title="دەستکاری زنجیرەی سەنەد"
-      extra={edited ? <Tag color="warning">دەستکاریکراو</Tag> : <Tag>ڕەسەن</Tag>}
+      extra={edited ? <Tag color="warning">ڕەشنووس</Tag> : <Tag>بڵاوکراوە</Tag>}
       footer={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {edited && (
@@ -175,10 +177,27 @@ export default function IsnadEditor({
         title={
           <span style={{ fontSize: 15, lineHeight: 1.8 }}>
             ڕیزبەندی بە شێوەی خوێندنەوەیە: سەرچاوە لە سەرەوە، کۆکەرەوە لە خوارەوە. گۆڕانکارییەکان
-            لە وۆرک‌ستەیشندا هەڵدەگیرێن و زنجیرەی ڕەسەن نەگۆڕ دەمێنێتەوە.
+            وەک ڕەشنووس هەڵدەگیرێن و کاتی پەسەندکردنی حەدیسەکە لە ماڵپەڕی گشتیدا بڵاو دەکرێنەوە.
+            نیشانەی «گومانلێکراو» تەنها لە دەزگاکەدا دەمێنێتەوە.
           </span>
         }
       />
+
+      {sanadCount > 1 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 14 }}
+          title={`ئەم حەدیسە ${toAr(sanadCount)} سەنەدی هەیە`}
+          description={
+            <span style={{ fontSize: 15, lineHeight: 1.8 }}>
+              ئەم لیستە هەموو لقەکان بە یەک هێڵ نیشان دەدات، بۆیە گۆڕینی ڕیزبەندی
+              بڵاو ناکرێتەوە و پەسەندکردنی حەدیسەکە ڕێگری لێ دەکرێت تا ڕەشنووسەکە
+              لابدرێت. نیشانەکردنی «گومانلێکراو» بێ کێشەیە.
+            </span>
+          }
+        />
+      )}
 
       {rows.length === 0 ? (
         <Empty description="زنجیرە بەتاڵە — ڕاوییەک زیاد بکە" />

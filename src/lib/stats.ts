@@ -1,6 +1,6 @@
 import { query } from './db';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://api.openhadith.org/api';
+import { API } from './backend';
 
 /**
  * Figures for the statistics screen.

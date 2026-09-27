@@ -16,8 +16,9 @@ export interface StudioUser {
 interface StudioState {
   /** null once loading finishes means nobody is signed in. */
   user: StudioUser | null;
-  users: StudioUser[];
   permissions: string[];
+  /** The workflow database holds seeded demo data (statuses, grades, teams). */
+  demo: boolean;
   loading: boolean;
   /** True when the current role grants this permission. Drives every affordance. */
   can: (permission: string) => boolean;
@@ -30,8 +31,8 @@ const Ctx = createContext<StudioState | null>(null);
 
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<StudioUser | null>(null);
-  const [users, setUsers] = useState<StudioUser[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [demo, setDemo] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -40,8 +41,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const j = await res.json();
       if (!j.success) return;
       setUser(j.data.user);
-      setUsers(j.data.users);
       setPermissions(j.data.permissions);
+      setDemo(!!j.data.demo);
     } catch {
       // A failed session read leaves `user` null, which sends the chrome to
       // the login screen — the right outcome either way.
@@ -55,8 +56,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       .then((j) => {
         if (!alive || !j.success) return;
         setUser(j.data.user);
-        setUsers(j.data.users);
         setPermissions(j.data.permissions);
+        setDemo(!!j.data.demo);
         setLoading(false);
       })
       .catch(() => {
@@ -79,14 +80,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StudioState>(
     () => ({
       user,
-      users,
       permissions,
+      demo,
       loading,
       can: (p: string) => permissions.includes(p),
       logout,
       refresh,
     }),
-    [user, users, permissions, loading, logout, refresh],
+    [user, permissions, demo, loading, logout, refresh],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

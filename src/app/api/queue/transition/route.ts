@@ -1,4 +1,5 @@
 import { query, audit } from '@/lib/db';
+import { publishHadith } from '@/lib/publish';
 import { readSession, requirePermission } from '@/lib/session';
 
 /** Which permission each transition needs. Mirrors the role x permission matrix. */
@@ -58,40 +59,67 @@ export async function POST(request: Request) {
     [ids],
   );
 
-  const sets: string[] = ['updated_at = now()'];
-  const args: unknown[] = [];
-  if (status) {
-    args.push(status);
-    sets.push(`status = $${args.length}`);
-  }
-  if (assigneeId !== undefined) {
-    args.push(assigneeId === null ? null : Number(assigneeId));
-    sets.push(`assignee_id = $${args.length}`);
-  }
-
-  args.push(ids);
-  const updated = await query(
-    `UPDATE studio_review SET ${sets.join(', ')}
-      WHERE id = ANY($${args.length}::int[])
-      RETURNING id, entity_id, status, assignee_id`,
-    args,
-  );
-
-  const action = status ? `status:${status}` : 'assign';
+  // Approving publishes each record's drafts. Records the API refuses keep
+  // their status and are reported back; the rest move to `published` when the
+  // public site changed, `approved` when there was nothing to send.
+  const statusOf = new Map<number, string>();
+  const failed: Array<{ id: number; entityId: string; error: string }> = [];
   for (const row of before) {
-    await audit({
-      actorId: session.user.id,
-      action,
-      entityType: 'hadith',
-      entityId: row.entity_id,
-      before: { status: row.status, assignee: row.assignee_id },
-      after: {
-        status: status ?? row.status,
-        assignee: assigneeId !== undefined ? assigneeId : row.assignee_id,
-      },
-      reason: reason ?? null,
-    });
+    if (status !== 'approved' && status !== 'published') {
+      if (status) statusOf.set(row.id, status);
+      continue;
+    }
+    const result = await publishHadith(session, row.entity_id, reason ?? null);
+    if (result.ok) statusOf.set(row.id, result.changed ? 'published' : 'approved');
+    else failed.push({ id: row.id, entityId: row.entity_id, error: result.error ?? '' });
   }
 
-  return Response.json({ success: true, data: { updated, count: updated.length } });
+  const moving = before.filter((r) => !failed.some((f) => f.id === r.id));
+  const updated: unknown[] = [];
+
+  for (const target of status ? [...new Set(statusOf.values())] : [null]) {
+    const group = moving.filter((r) => target === null || statusOf.get(r.id) === target);
+    if (!group.length) continue;
+
+    const sets: string[] = ['updated_at = now()'];
+    const args: unknown[] = [];
+    if (target) {
+      args.push(target);
+      sets.push(`status = $${args.length}`);
+    }
+    if (assigneeId !== undefined) {
+      args.push(assigneeId === null ? null : Number(assigneeId));
+      sets.push(`assignee_id = $${args.length}`);
+    }
+    args.push(group.map((r) => r.id));
+    updated.push(...await query(
+      `UPDATE studio_review SET ${sets.join(', ')}
+        WHERE id = ANY($${args.length}::int[])
+        RETURNING id, entity_id, status, assignee_id`,
+      args,
+    ));
+
+    for (const row of group) {
+      await audit({
+        actorId: session.user.id,
+        action: target ? `status:${target}` : 'assign',
+        entityType: 'hadith',
+        entityId: row.entity_id,
+        before: { status: row.status, assignee: row.assignee_id },
+        after: {
+          status: target ?? row.status,
+          assignee: assigneeId !== undefined ? assigneeId : row.assignee_id,
+        },
+        reason: reason ?? null,
+      });
+    }
+  }
+
+  if (failed.length && !updated.length) {
+    return Response.json(
+      { success: false, error: failed[0].error, data: { failed } },
+      { status: 409 },
+    );
+  }
+  return Response.json({ success: true, data: { updated, count: updated.length, failed } });
 }

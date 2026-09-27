@@ -7,7 +7,7 @@
  * shows precisely what a reader would see.
  */
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://api.openhadith.org/api';
+import { API } from './backend';
 
 export interface NarratorBio {
   id: string;
@@ -75,9 +75,10 @@ export interface CorpusHadith {
   explanations?: Array<Record<string, string | null>>;
 }
 
-async function get<T>(path: string, revalidate = 60): Promise<T | null> {
+async function get<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${API}${path}`, { next: { revalidate } });
+    // Uncached: after a publish the workstation must show what is live now.
+    const res = await fetch(`${API}${path}`, { cache: 'no-store' });
     if (!res.ok) return null;
     const body = await res.json();
     return (body.data ?? null) as T;

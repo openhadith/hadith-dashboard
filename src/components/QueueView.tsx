@@ -162,8 +162,18 @@ export default function QueueView({ users, savedViews, teams }: Props) {
       toast(j.error ?? 'کردارەکە سەرکەوتوو نەبوو', 'error');
       return;
     }
-    toast(`${toAr(j.data.count)} ڕەکۆرد نوێکرایەوە`);
-    setSelected([]);
+    const failed: Array<{ entityId: string; error: string }> = j.data.failed ?? [];
+    if (failed.length) {
+      // Refused publishes stay selected so they can be opened and fixed.
+      toast(
+        `${toAr(j.data.count)} نوێکرایەوە · ${toAr(failed.length)} بڵاونەکرایەوە: ${failed[0].error}`,
+        'warn',
+      );
+      setSelected(selected.filter((id) => failed.some((f) => rows.find((r) => r.id === id)?.entity_id === f.entityId)));
+    } else {
+      toast(`${toAr(j.data.count)} ڕەکۆرد نوێکرایەوە`);
+      setSelected([]);
+    }
     reload();
   };
 

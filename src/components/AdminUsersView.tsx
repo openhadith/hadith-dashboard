@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Alert, Avatar, Card, Checkbox, Descriptions, Progress, Select, Space, Table, Tabs, Tag,
-  Tooltip, Typography,
+  Alert, Avatar, Button, Card, Checkbox, Descriptions, Form, Input, Modal, Progress, Select, Space,
+  Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
+import { UserAddOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useStudio } from './StudioContext';
 import { useToast } from './useToast';
@@ -51,6 +52,27 @@ export default function AdminUsersView({
   const toast = useToast();
   const [selTeam, setSelTeam] = useState(teams[0]?.id ?? 0);
   const [cells, setCells] = useState(matrix);
+  const [addOpen, setAddOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addForm] = Form.useForm<{ name: string; email: string; password: string; role: string }>();
+
+  const createAccount = async (v: { name: string; email: string; password: string; role: string }) => {
+    setAdding(true);
+    const j = await (await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(v),
+    })).json();
+    setAdding(false);
+    if (!j.success) {
+      toast(j.error ?? 'دروستکردنی هەژمار سەرکەوتوو نەبوو', 'error');
+      return;
+    }
+    toast(`هەژماری «${v.name}» دروستکرا`);
+    setAddOpen(false);
+    addForm.resetFields();
+    router.refresh();
+  };
 
   const readOnly = !can('admin');
   const team = teams.find((t) => t.id === selTeam);
@@ -259,13 +281,28 @@ export default function AdminUsersView({
               key: 'users',
               label: `بەکارهێنەران (${toAr(users.length)})`,
               children: (
-                <Table<User>
-                  rowKey="id"
-                  size="small"
-                  columns={userColumns}
-                  dataSource={users}
-                  pagination={false}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Text type="secondary" style={{ fontSize: 15, flex: 1 }}>
+                      هەژمارەکان هاوبەشن لەگەڵ API ـی ماڵپەڕی گشتی. خۆتۆمارکردنی گشتی داخراوە.
+                    </Text>
+                    <Button
+                      type="primary"
+                      icon={<UserAddOutlined />}
+                      disabled={readOnly}
+                      onClick={() => setAddOpen(true)}
+                    >
+                      هەژماری نوێ
+                    </Button>
+                  </div>
+                  <Table<User>
+                    rowKey="id"
+                    size="small"
+                    columns={userColumns}
+                    dataSource={users}
+                    pagination={false}
+                  />
+                </div>
               ),
             },
             {
@@ -296,6 +333,41 @@ export default function AdminUsersView({
           ]}
         />
       </div>
+
+      <Modal
+        open={addOpen}
+        title="هەژماری نوێ"
+        okText="دروستکردن"
+        cancelText="پاشگەزبوونەوە"
+        confirmLoading={adding}
+        onOk={() => addForm.submit()}
+        onCancel={() => setAddOpen(false)}
+        destroyOnHidden
+      >
+        <Form form={addForm} layout="vertical" onFinish={createAccount} requiredMark={false}
+          initialValues={{ role: 'editor' }}>
+          <Form.Item name="name" label="ناو" rules={[{ required: true, min: 2, message: 'ناو بنووسە' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="email" label="ئیمەیل"
+            rules={[{ required: true, type: 'email', message: 'ئیمەیلێکی دروست بنووسە' }]}>
+            <Input dir="ltr" autoComplete="off" />
+          </Form.Item>
+          <Form.Item name="password" label="وشەی نهێنیی سەرەتایی"
+            extra="لانیکەم ٨ پیت. بە شێوەیەکی پارێزراو بیدە بە خاوەنەکەی."
+            rules={[{ required: true, min: 8, message: 'لانیکەم ٨ پیت' }]}>
+            <Input.Password dir="ltr" autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item name="role" label="ڕۆڵ" rules={[{ required: true }]}>
+            <Select
+              options={ROLES.map((r) => ({
+                value: r,
+                label: <span style={{ color: ROLE_COLOR[r], fontWeight: 600 }}>{ROLE_LABEL[r]}</span>,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <aside className="side-rail">
         {team && (

@@ -32,6 +32,8 @@ export default async function HadithWorkstation({
       chain={loaded.chain.links}
       chainEdited={loaded.chain.edited}
       chainEditedBy={loaded.chain.editedBy}
+      sanadCount={loaded.chain.sanadCount}
+      draftMatn={loaded.draftMatn}
       review={loaded.review as never}
       issues={loaded.issues as never}
       revisions={loaded.revisions as never}
@@ -46,7 +48,7 @@ async function load(id: string) {
   {
     const session = await readSession();
 
-    const [hadith, review, revisions, users, next] = await Promise.all([
+    const [hadith, review, revisions, users, next, draft] = await Promise.all([
       getHadith(id),
       queryOne(
         `SELECT r.*, u.name AS assignee_name, u.avatar_tone, t.name AS team_name
@@ -74,6 +76,12 @@ async function load(id: string) {
           ORDER BY updated_at ASC LIMIT 1`,
         [id, session.user.id],
       ),
+      // The unpublished text, when someone has saved one.
+      queryOne<{ payload: { matn?: string } }>(
+        `SELECT payload FROM studio_entities
+          WHERE entity_type = 'hadith' AND entity_id = $1 AND deleted_at IS NULL`,
+        [id],
+      ),
     ]);
 
     const issues = review
@@ -84,9 +92,9 @@ async function load(id: string) {
         )
       : [];
 
-    // An edited chain, when the studio holds one, replaces the corpus chain.
+    // An unpublished chain draft, when there is one, replaces the corpus chain.
     const chain = await loadChain(id, hadith?.hadith_has_rawy ?? []);
 
-    return { hadith, chain, review, issues, revisions, users, next };
+    return { hadith, chain, review, issues, revisions, users, next, draftMatn: draft?.payload?.matn ?? null };
   }
 }

@@ -27,6 +27,11 @@ export interface FieldDef {
   target?: EntityType;
   help?: string;
   max?: number;
+  /**
+   * Maps 1:1 onto a corpus column the API accepts, so an approved edit reaches
+   * the public site. Fields without it stay in the dashboard.
+   */
+  publish?: true;
 }
 
 export interface EntityDef {
@@ -58,10 +63,10 @@ export const ENTITIES: Record<EntityType, EntityDef> = {
     titleField: 'matn',
     corpusList: 'hadiths',
     fields: [
-      { name: 'matn', label: 'متن', kind: 'arabic', required: true, column: true },
-      { name: 'full_hadith', label: 'دەقی تەواو', kind: 'arabic' },
+      { name: 'matn', publish: true, label: 'متن', kind: 'arabic', required: true, column: true },
+      { name: 'full_hadith', publish: true, label: 'دەقی تەواو', kind: 'arabic' },
       {
-        name: 'type', label: 'جۆر', kind: 'select', column: true, width: 110,
+        name: 'type', publish: true, label: 'جۆر', kind: 'select', column: true, width: 110,
         options: [
           { value: 'مرفوع', label: 'مرفوع' },
           { value: 'موقوف', label: 'موقوف' },
@@ -84,25 +89,25 @@ export const ENTITIES: Record<EntityType, EntityDef> = {
     titleField: 'shohra',
     corpusList: 'narrators',
     fields: [
-      { name: 'shohra', label: 'شۆهرە', kind: 'arabic', required: true, column: true },
-      { name: 'name', label: 'ناوی تەواو', kind: 'arabic', required: true, column: true, width: 260 },
-      { name: 'kunya', label: 'کونیە', kind: 'arabic' },
-      { name: 'laqab', label: 'لەقەب', kind: 'arabic' },
-      { name: 'nasab', label: 'نەسەب', kind: 'arabic' },
-      { name: 'mazhab', label: 'مەزهەب', kind: 'text' },
+      { name: 'shohra', publish: true, label: 'شۆهرە', kind: 'arabic', required: true, column: true },
+      { name: 'name', publish: true, label: 'ناوی تەواو', kind: 'arabic', required: true, column: true, width: 260 },
+      { name: 'kunya', publish: true, label: 'کونیە', kind: 'arabic' },
+      { name: 'laqab', publish: true, label: 'لەقەب', kind: 'arabic' },
+      { name: 'nasab', publish: true, label: 'نەسەب', kind: 'arabic' },
+      { name: 'mazhab', publish: true, label: 'مەزهەب', kind: 'text' },
       {
-        name: 'rutba', label: 'پلە (ڕوتبە)', kind: 'number', column: true, width: 90,
+        name: 'rutba', publish: true, label: 'پلە (ڕوتبە)', kind: 'number', column: true, width: 90,
         help: '١ بەرزترینە. پلەی ١–٣ بە متمانەترین دادەنرێن.', max: 12,
       },
-      { name: 'rutba_description', label: 'وەسفی پلە', kind: 'text' },
-      { name: 'tabaqah', label: 'تەبەقە', kind: 'number' },
-      { name: 'birthdate', label: 'ساڵی لەدایکبوون', kind: 'text' },
-      { name: 'deathdate', label: 'ساڵی وەفات', kind: 'text', column: true, width: 100 },
-      { name: 'birth_country', label: 'شوێنی لەدایکبوون', kind: 'text' },
-      { name: 'death_country', label: 'شوێنی وەفات', kind: 'text' },
-      { name: 'tadlis', label: 'تدلیس', kind: 'switch', help: 'ڕاوی بە تدلیس ناسراوە' },
-      { name: 'has_ikhtilat', label: 'اختلاط', kind: 'switch' },
-      { name: 'description', label: 'وەسف', kind: 'textarea' },
+      { name: 'rutba_description', publish: true, label: 'وەسفی پلە', kind: 'text' },
+      { name: 'tabaqah', publish: true, label: 'تەبەقە', kind: 'number' },
+      { name: 'birthdate', publish: true, label: 'ساڵی لەدایکبوون', kind: 'text' },
+      { name: 'deathdate', publish: true, label: 'ساڵی وەفات', kind: 'text', column: true, width: 100 },
+      { name: 'birth_country', publish: true, label: 'شوێنی لەدایکبوون', kind: 'text' },
+      { name: 'death_country', publish: true, label: 'شوێنی وەفات', kind: 'text' },
+      { name: 'tadlis', publish: true, label: 'تدلیس', kind: 'switch', help: 'ڕاوی بە تدلیس ناسراوە' },
+      { name: 'has_ikhtilat', publish: true, label: 'اختلاط', kind: 'switch' },
+      { name: 'description', publish: true, label: 'وەسف', kind: 'textarea' },
     ],
   },
 
@@ -113,15 +118,15 @@ export const ENTITIES: Record<EntityType, EntityDef> = {
     titleField: 'title',
     corpusList: 'books',
     fields: [
-      { name: 'title', label: 'ناونیشان', kind: 'arabic', required: true, column: true },
+      { name: 'title', publish: true, label: 'ناونیشان', kind: 'arabic', required: true, column: true },
       { name: 'authorName', label: 'نووسەر', kind: 'arabic', column: true, width: 240 },
-      { name: 'publisher', label: 'بڵاوکەرەوە', kind: 'text' },
-      { name: 'edition', label: 'چاپ', kind: 'text' },
-      { name: 'century', label: 'سەدە', kind: 'text', column: true, width: 90 },
-      { name: 'country', label: 'وڵات', kind: 'text', column: true, width: 110 },
-      { name: 'number_of_parts', label: 'ژمارەی بەرگ', kind: 'number' },
-      { name: 'published_at', label: 'ساڵی بڵاوکردنەوە', kind: 'text' },
-      { name: 'investor', label: 'پشکنەر', kind: 'text' },
+      { name: 'publisher', publish: true, label: 'بڵاوکەرەوە', kind: 'text' },
+      { name: 'edition', publish: true, label: 'چاپ', kind: 'text' },
+      { name: 'century', publish: true, label: 'سەدە', kind: 'text', column: true, width: 90 },
+      { name: 'country', publish: true, label: 'وڵات', kind: 'text', column: true, width: 110 },
+      { name: 'number_of_parts', publish: true, label: 'ژمارەی بەرگ', kind: 'number' },
+      { name: 'published_at', publish: true, label: 'ساڵی بڵاوکردنەوە', kind: 'text' },
+      { name: 'investor', publish: true, label: 'پشکنەر', kind: 'text' },
     ],
   },
 
@@ -187,6 +192,11 @@ export const ENTITY_TYPES = Object.keys(ENTITIES) as EntityType[];
 
 export function isEntityType(v: string): v is EntityType {
   return v in ENTITIES;
+}
+
+/** Fields of a type that publishing sends to the corpus. Empty for dashboard-only types. */
+export function publishableFields(type: EntityType): string[] {
+  return ENTITIES[type].fields.filter((f) => f.publish).map((f) => f.name);
 }
 
 /**

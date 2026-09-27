@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://api.openhadith.org/api';
+import { API } from '@/lib/backend';
 
 /**
  * Thin proxy onto the public corpus API.

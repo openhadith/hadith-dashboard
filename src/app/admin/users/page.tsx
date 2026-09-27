@@ -1,4 +1,6 @@
 import { query } from '@/lib/db';
+import { permissionMatrix, refreshAccounts } from '@/lib/accounts';
+import { readSession } from '@/lib/session';
 import AdminUsersView from '@/components/AdminUsersView';
 import SetupNotice from '@/components/SetupNotice';
 
@@ -13,11 +15,15 @@ export default async function AdminUsersPage() {
   let error: string | undefined;
 
   try {
+    const session = await readSession();
+    // Accounts live in the API; bring any created or changed elsewhere into view.
+    await refreshAccounts(session);
+
     const [users, teams, members, books, matrix] = await Promise.all([
       query(
         `SELECT u.id, u.name, u.email, u.role, u.avatar_tone, u.status, u.last_seen,
                 (SELECT count(*)::int FROM studio_review r WHERE r.assignee_id = u.id) AS workload
-           FROM studio_users u ORDER BY u.id`,
+           FROM studio_users u WHERE u.backend_user_id IS NOT NULL ORDER BY u.id`,
       ),
       query(
         `SELECT t.id, t.name, t.color, t.scope, u.name AS lead_name,
@@ -32,7 +38,7 @@ export default async function AdminUsersPage() {
           ORDER BY tm.team_id, u.id`,
       ),
       query(`SELECT team_id, book_id, book_title FROM studio_team_books ORDER BY team_id`),
-      query(`SELECT role, permission, allowed FROM studio_permissions`),
+      permissionMatrix(session),
     ]);
     loaded = { users, teams, members, books, matrix };
   } catch (err) {

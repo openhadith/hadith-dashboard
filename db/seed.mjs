@@ -18,7 +18,7 @@
 
 import pg from 'pg';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://api.openhadith.org/api';
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4005/api';
 const DB = process.env.STUDIO_DATABASE_URL
   || 'postgresql://localhost:5432/hadith_studio';
 
@@ -57,6 +57,8 @@ async function getJson(path) {
 // ------------------------------------------------------------- demo fixtures
 
 // The cast from the design comps, kept verbatim so screens match the mockups.
+// These are profiles only: each is linked to the API account with the same
+// email on first sign-in (the API's `npm run dev:db` creates those accounts).
 const USERS = [
   ['م. زانا', 'zana@muhaqqiq.org', 'supervisor', 'a', 'on'],
   ['د. أحمد الراوی', 'ahmad@muhaqqiq.org', 'muhaqqiq', 'g', 'on'],
@@ -123,16 +125,6 @@ const TEAMS = [
   },
 ];
 
-// The editable matrix from Admin Users.dc.html:446.
-const PERMISSIONS = ['view', 'edit', 'approve', 'reject', 'merge', 'admin'];
-const MATRIX = {
-  supervisor: [1, 1, 1, 1, 1, 1],
-  muhaqqiq: [1, 1, 1, 1, 1, 0],
-  editor: [1, 1, 0, 0, 0, 0],
-  reviewer: [1, 0, 1, 1, 0, 0],
-  viewer: [1, 0, 0, 0, 0, 0],
-};
-
 // Roughly the chip counts shown in Validation Queue.dc.html:322.
 const STATUS_MIX = [
   ['pending', 184],
@@ -164,7 +156,7 @@ async function main() {
 
   await client.query('BEGIN');
   await client.query(`TRUNCATE studio_activity, studio_saved_views, studio_audit,
-    studio_revisions, studio_issues, studio_review, studio_permissions,
+    studio_revisions, studio_issues, studio_review,
     studio_team_books, studio_team_members, studio_teams, studio_users
     RESTART IDENTITY CASCADE`);
 
@@ -179,17 +171,6 @@ async function main() {
     userId.set(email, rows[0].id);
   }
   console.log(`  users        ${userId.size}`);
-
-  // --- permission matrix
-  for (const [role, cells] of Object.entries(MATRIX)) {
-    for (let i = 0; i < PERMISSIONS.length; i++) {
-      await client.query(
-        `INSERT INTO studio_permissions (role, permission, allowed) VALUES ($1,$2,$3)`,
-        [role, PERMISSIONS[i], !!cells[i]],
-      );
-    }
-  }
-  console.log(`  permissions  ${Object.keys(MATRIX).length * PERMISSIONS.length}`);
 
   // --- book titles, resolved from the live corpus
   const allBooks = await getJson('/books?limit=2000');

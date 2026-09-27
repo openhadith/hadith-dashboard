@@ -36,6 +36,10 @@ interface Props {
   chain: EditableLink[];
   chainEdited: boolean;
   chainEditedBy: string | null;
+  /** Distinct sanads in the corpus; chain edits publish only when there is one. */
+  sanadCount: number;
+  /** Unpublished matn, when a draft exists. */
+  draftMatn: string | null;
   review: Review | null;
   issues: Array<{ type: string; severity: string; detector: string }>;
   revisions: Array<{ id: number; payload: Record<string, unknown>; note: string | null; created_at: string; author_name: string | null }>;
@@ -56,13 +60,17 @@ function TokenTag({ token, title }: { token: Token; title?: string }) {
 const AMIRI = { fontFamily: 'var(--font-amiri), serif' } as const;
 
 export default function WorkstationView({
-  id, hadith, chain, chainEdited, chainEditedBy, review, issues, revisions, users, nextId,
+  id, hadith, chain, chainEdited, chainEditedBy, sanadCount, draftMatn, review, issues, revisions, users,
+  nextId,
 }: Props) {
   const router = useRouter();
   const { can } = useStudio();
   const toast = useToast();
 
-  const [matn, setMatn] = useState(hadith?.matn ?? review?.snapshot?.matn ?? '');
+  const [matn, setMatn] = useState(draftMatn ?? hadith?.matn ?? review?.snapshot?.matn ?? '');
+  const liveMatn = hadith?.matn ?? null;
+  // Unpublished work on this hadith: a text draft or a reordered chain.
+  const pending = (draftMatn !== null && draftMatn !== liveMatn) || chainEdited;
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -90,7 +98,12 @@ export default function WorkstationView({
     }
     setDirty(false);
     setNote('');
-    toast(nextStatus ? `دۆخ گۆڕدرا بۆ «${STATUS[nextStatus]?.label ?? nextStatus}»` : 'پاشەکەوت کرا');
+    const finalStatus: string | null = j.data?.status ?? nextStatus ?? null;
+    toast(
+      j.data?.published ? 'پەسەندکرا و بڵاوکرایەوە — لە ماڵپەڕی گشتیدا دەردەکەوێت'
+        : finalStatus ? `دۆخ گۆڕدرا بۆ «${STATUS[finalStatus]?.label ?? finalStatus}»`
+        : 'ڕەشنووس پاشەکەوت کرا',
+    );
 
     // The primary action closes the loop: save, then straight to the next
     // record, without returning to the list.
@@ -163,7 +176,14 @@ export default function WorkstationView({
           <Card
             size="small"
             title="دەقی حەدیس (متن)"
-            extra={dirty ? <Tag color="warning">گۆڕدراوە</Tag> : null}
+            extra={
+              dirty ? <Tag color="warning">گۆڕدراوە</Tag>
+                : draftMatn !== null && draftMatn !== liveMatn ? (
+                  <Tooltip title="ئەم دەقە هێشتا بڵاونەکراوەتەوە؛ پەسەندکردن بڵاوی دەکاتەوە">
+                    <Tag color="warning" style={{ marginInlineEnd: 0 }}>ڕەشنووس</Tag>
+                  </Tooltip>
+                ) : null
+            }
             styles={{ body: { padding: 0 } }}
           >
             <Input.TextArea
@@ -183,8 +203,13 @@ export default function WorkstationView({
             extra={
               <Space size={8}>
                 {chainEdited && (
-                  <Tooltip title={chainEditedBy ? `دەستکاریکراو لەلایەن ${chainEditedBy}` : undefined}>
-                    <Tag color="warning" style={{ marginInlineEnd: 0 }}>دەستکاریکراو</Tag>
+                  <Tooltip title={`ڕەشنووس، هێشتا بڵاونەکراوەتەوە${chainEditedBy ? ` · ${chainEditedBy}` : ''}`}>
+                    <Tag color="warning" style={{ marginInlineEnd: 0 }}>ڕەشنووس</Tag>
+                  </Tooltip>
+                )}
+                {sanadCount > 1 && (
+                  <Tooltip title="ئەم حەدیسە چەند سەنەدێکی هەیە؛ دەستکاری زنجیرە لێرەوە بڵاو ناکرێتەوە">
+                    <Tag style={{ marginInlineEnd: 0 }}>{toAr(sanadCount)} سەنەد</Tag>
                   </Tooltip>
                 )}
                 <Text type="secondary" style={{ fontSize: 15 }}>{toAr(chain.length)} ڕاوی</Text>
@@ -288,9 +313,15 @@ export default function WorkstationView({
             placeholder="هۆکاری گۆڕانکاری (ئارەزوومەندانە)…"
             style={{ flex: 1, maxWidth: 320 }}
           />
-          <Tooltip title={can('approve') ? undefined : 'ڕۆڵەکەت مۆڵەتی پەسەندکردنی نییە'}>
+          <Tooltip
+            title={
+              !can('approve') ? 'ڕۆڵەکەت مۆڵەتی پەسەندکردنی نییە'
+                : pending || dirty ? 'گۆڕانکارییەکان لە ماڵپەڕی گشتیدا بڵاو دەکرێنەوە'
+                : undefined
+            }
+          >
             <Button type="primary" icon={<CheckOutlined />} disabled={busy || !can('approve')} onClick={() => save('approved')}>
-              پەسەندکردن
+              {pending || dirty ? 'پەسەندکردن و بڵاوکردنەوە' : 'پەسەندکردن'}
             </Button>
           </Tooltip>
           <Tooltip title={can('reject') ? undefined : 'ڕۆڵەکەت مۆڵەتی ڕەتکردنەوەی نییە'}>
@@ -302,19 +333,18 @@ export default function WorkstationView({
             گفتوگۆ
           </Button>
 
-          <Space style={{ marginInlineStart: 'auto' }}>
-            {nextId && <Text type="secondary" style={{ fontSize: 15 }}>⌘↵ پاشەکەوت و دواتر</Text>}
+          <Tooltip title={nextId ? '⌘↵ / Ctrl+↵' : undefined}>
             <Button
               type="primary"
               icon={<SaveOutlined />}
-              style={{ background: c.gold, borderColor: c.gold }}
+              style={{ background: c.gold, borderColor: c.gold, marginInlineStart: 'auto' }}
               loading={busy}
               disabled={!can('edit')}
               onClick={() => save(undefined, true)}
             >
               پاشەکەوت{nextId ? ' → دواتر' : ''}
             </Button>
-          </Space>
+          </Tooltip>
         </div>
       </div>
 
@@ -324,6 +354,7 @@ export default function WorkstationView({
           hadithId={id}
           links={chain}
           edited={chainEdited}
+          sanadCount={sanadCount}
           open
           onClose={() => setIsnadOpen(false)}
           onSaved={() => { setIsnadOpen(false); router.refresh(); }}

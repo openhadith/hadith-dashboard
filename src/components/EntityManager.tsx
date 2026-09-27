@@ -8,11 +8,11 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UndoOutlined,
+  CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import { useStudio } from './StudioContext';
 import { useToast } from './useToast';
-import { ENTITIES, type EntityType, type FieldDef } from '@/lib/entities';
+import { ENTITIES, publishableFields, type EntityType, type FieldDef } from '@/lib/entities';
 import { c, toAr, shell } from '@/lib/tokens';
 
 const { Text } = Typography;
@@ -21,6 +21,8 @@ interface Row {
   id: string;
   origin: 'corpus' | 'local';
   edited: boolean;
+  /** The draft changes a field that publishing sends to the corpus. */
+  publishable?: boolean;
   data: Record<string, unknown>;
   updated_at?: string;
   updated_by_name?: string | null;
@@ -34,12 +36,14 @@ interface Row {
  * a table and a form need. Adding a field there adds a column and an input here
  * with no further work.
  *
- * Every write lands in the studio database. Nothing here can alter the
- * published corpus — edits to a corpus record are stored as an override layered
- * on top when the record is read back, which the banner states plainly.
+ * Every save lands in the dashboard database as a draft layered over the
+ * corpus record. A draft reaches the public site only when someone with the
+ * `approve` permission publishes it, through the API. Fields the corpus has no
+ * column for, and whole dashboard-only types, never leave the dashboard.
  */
 export default function EntityManager({ type }: { type: EntityType }) {
   const def = ENTITIES[type];
+  const publishable = publishableFields(type);
   const { can } = useStudio();
   const toast = useToast();
   const [form] = Form.useForm();
@@ -148,6 +152,44 @@ export default function EntityManager({ type }: { type: EntityType }) {
     reload();
   };
 
+  const publish = async (row: Row) => {
+    const res = await fetch(`/api/entities/${type}/${encodeURIComponent(row.id)}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const j = await res.json();
+    if (!j.success) {
+      toast(j.error ?? 'بڵاوکردنەوە سەرکەوتوو نەبوو', 'error');
+      return false;
+    }
+    toast(j.data.published ? 'بڵاوکرایەوە — لە ماڵپەڕی گشتیدا دەردەکەوێت' : 'هیچ گۆڕانکارییەک بۆ بڵاوکردنەوە نەبوو');
+    reload();
+    return true;
+  };
+
+  /** Saves the form as a draft, then publishes it. */
+  const saveAndPublish = async () => {
+    const values = await form.validateFields().catch(() => null);
+    if (!values || !editing) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/entities/${type}/${encodeURIComponent(editing.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: { ...editing.data, ...values } }),
+      });
+      const j = await res.json();
+      if (!j.success) {
+        toast(j.error ?? 'پاشەکەوتکردن سەرکەوتوو نەبوو', 'error');
+        return;
+      }
+      if (await publish(editing)) close();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const restore = async (row: Row) => {
     await fetch(`/api/entities/${type}/${encodeURIComponent(row.id)}`, { method: 'PATCH' });
     toast('گەڕێندرایەوە');
@@ -168,13 +210,13 @@ export default function EntityManager({ type }: { type: EntityType }) {
     {
       title: 'دۆخ',
       key: 'origin',
-      width: 110,
+      width: 150,
       render: (_: unknown, row: Row) =>
         row.origin === 'local' ? (
           <Tag color="success">نوێ</Tag>
         ) : row.edited ? (
-          <Tooltip title={`دەستکاریکراو${row.updated_by_name ? ` لەلایەن ${row.updated_by_name}` : ''}`}>
-            <Tag color="warning">دەستکاریکراو</Tag>
+          <Tooltip title={`${row.publishable ? 'ڕەشنووس، هێشتا بڵاونەکراوەتەوە' : 'تەنها لە دەزگاکەدا'}${row.updated_by_name ? ` · ${row.updated_by_name}` : ''}`}>
+            <Tag color="warning">{row.publishable ? 'چاوەڕێی بڵاوکردنەوە' : 'تێبینی ناوخۆیی'}</Tag>
           </Tooltip>
         ) : (
           <Text style={{ fontSize: 15, color: c.inkPale }}>ڕەسەن</Text>
@@ -183,7 +225,7 @@ export default function EntityManager({ type }: { type: EntityType }) {
     {
       title: '',
       key: 'actions',
-      width: 104,
+      width: 136,
       render: (_: unknown, row: Row) =>
         binOpen ? (
           <Tooltip title={can('merge') ? 'گەڕاندنەوە' : 'مۆڵەتت نییە'}>
@@ -198,6 +240,17 @@ export default function EntityManager({ type }: { type: EntityType }) {
           </Tooltip>
         ) : (
         <Space size={4}>
+          {row.origin === 'corpus' && row.publishable && (
+            <Tooltip title={can('approve') ? 'بڵاوکردنەوە بۆ ماڵپەڕی گشتی' : 'مۆڵەتی پەسەندکردنت نییە'}>
+              <Button
+                size="small"
+                type="text"
+                icon={<CloudUploadOutlined />}
+                disabled={!can('approve')}
+                onClick={() => publish(row)}
+              />
+            </Tooltip>
+          )}
           <Tooltip title={can('edit') ? 'دەستکاری' : 'مۆڵەتی دەستکاریت نییە'}>
             <Button
               size="small"
@@ -290,8 +343,8 @@ export default function EntityManager({ type }: { type: EntityType }) {
             description={
               <span style={{ fontSize: 15 }}>
                 {toAr(summary.created)} نوێ · {toAr(summary.edited)} دەستکاریکراو ·{' '}
-                {toAr(summary.deleted)} شاردراوە — ئەمانە لێرە هەڵدەگیرێن و هیچ
-                کاریگەرییەکیان لەسەر ماڵپەڕی گشتی نییە.
+                {toAr(summary.deleted)} شاردراوە — تا لەلایەن کەسێکی خاوەن مۆڵەتی
+                پەسەندکردنەوە بڵاونەکرێنەوە، لە ماڵپەڕی گشتیدا دەرناکەون.
               </span>
             }
             action={
@@ -340,9 +393,22 @@ export default function EntityManager({ type }: { type: EntityType }) {
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button onClick={close}>پاشگەزبوونەوە</Button>
-            <Button type="primary" loading={saving} onClick={() => form.submit()}>
-              پاشەکەوتکردن
+            <Button loading={saving} onClick={() => form.submit()}>
+              پاشەکەوتکردنی ڕەشنووس
             </Button>
+            {editing?.origin === 'corpus' && publishable.length > 0 && (
+              <Tooltip title={can('approve') ? undefined : 'مۆڵەتی پەسەندکردنت نییە'}>
+                <Button
+                  type="primary"
+                  icon={<CloudUploadOutlined />}
+                  loading={saving}
+                  disabled={!can('approve')}
+                  onClick={saveAndPublish}
+                >
+                  پاشەکەوت و بڵاوکردنەوە
+                </Button>
+              </Tooltip>
+            )}
           </div>
         }
       >
@@ -354,8 +420,10 @@ export default function EntityManager({ type }: { type: EntityType }) {
             title="دەستکاری داتای ڕەسەن"
             description={
               <span style={{ fontSize: 15, lineHeight: 1.8 }}>
-                ئەم ڕەکۆردە لە سەرچاوەی ڕەسەنەوە دێت. گۆڕانکارییەکان وەک چینێکی
-                جیاواز لە وۆرک‌ستەیشندا هەڵدەگیرێن — سەرچاوەکە نەگۆڕ دەمێنێتەوە.
+                ئەم ڕەکۆردە لە ماڵپەڕی گشتیدا بڵاوکراوەتەوە. پاشەکەوتکردن ڕەشنووسێک
+                دروست دەکات؛ تەنها کاتێک لە ماڵپەڕدا دەردەکەوێت کە بڵاو بکرێتەوە.
+                {publishable.length > 0 && ' خانە نیشانکراوەکان بە «تەنها لێرە» بڵاو ناکرێنەوە.'}
+                {publishable.length === 0 && ' ئەم جۆرە تەنها لە دەزگاکەدایە و بڵاو ناکرێتەوە.'}
               </span>
             }
           />
@@ -366,7 +434,14 @@ export default function EntityManager({ type }: { type: EntityType }) {
             <Form.Item
               key={f.name}
               name={f.name}
-              label={f.label}
+              label={
+                editing?.origin === 'corpus' && publishable.length > 0 && !f.publish ? (
+                  <Space size={6}>
+                    {f.label}
+                    <Tag style={{ marginInlineEnd: 0, fontSize: 13 }}>تەنها لێرە</Tag>
+                  </Space>
+                ) : f.label
+              }
               extra={f.help}
               valuePropName={f.kind === 'switch' ? 'checked' : 'value'}
               rules={f.required ? [{ required: true, message: `${f.label} پێویستە` }] : undefined}

@@ -1,4 +1,5 @@
 import { query } from './db';
+import { API } from './backend';
 import { readSession } from './session';
 import { DECISION } from './stats';
 
@@ -104,7 +105,7 @@ export async function loadDashboard() {
                             AND a.action = 'status:duplicate')::text AS duplicates7
        FROM studio_audit a`,
     ),
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.openhadith.org/api'}/stats`, {
+    fetch(`${API}/stats`, {
       next: { revalidate: 300 },
     })
       .then((r) => r.json())

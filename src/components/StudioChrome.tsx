@@ -68,7 +68,7 @@ export default function StudioChrome({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, can, logout } = useStudio();
+  const { user, loading, can, logout, demo } = useStudio();
 
   const bare = BARE_ROUTES.some((r) => pathname.startsWith(r));
 
@@ -195,9 +195,11 @@ export default function StudioChrome({
             />
           </Tooltip>
 
-          <Tooltip title="داتای حەدیس ڕاستەقینەیە؛ دۆخی کار نموونەییە و کاریگەری لەسەر ماڵپەڕی گشتی نییە">
-            <Tag color="warning" style={{ marginInlineEnd: 0 }}>نموونە</Tag>
-          </Tooltip>
+          {demo && (
+            <Tooltip title="دۆخی کار، تیم و پلەکانی ڕیز نموونەیین. پەسەندکردن هێشتا لە API ـی بەستراودا بڵاو دەکاتەوە.">
+              <Tag color="warning" style={{ marginInlineEnd: 0 }}>نموونە</Tag>
+            </Tooltip>
+          )}
 
           <Tooltip title="ماڵپەڕی گشتی">
             <a

@@ -1,56 +1,51 @@
-import { cookies } from 'next/headers';
-import {
-  listUsers, readSessionOrNull, sessionForEmail, sessionForUser, SESSION_COOKIE,
-} from '@/lib/session';
+import { queryOne } from '@/lib/db';
+import { API } from '@/lib/backend';
+import { readSessionOrNull, signIn, signOut } from '@/lib/session';
 
-/** Current identity (or null), plus the demo accounts the login screen offers. */
+// Seeded rows are marked; production (db:init) has none. Checked once per process.
+let demo: Promise<boolean> | null = null;
+const isDemo = () =>
+  (demo ??= queryOne<{ demo: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM studio_review WHERE snapshot->>'gradeSource' = 'demo') AS demo`,
+  ).then((r) => !!r?.demo).catch(() => false));
+
+/** Current identity and permissions, or a null user. */
 export async function GET() {
   const session = await readSessionOrNull();
-  const users = await listUsers();
   return Response.json({
     success: true,
     data: {
       user: session?.user ?? null,
       permissions: session?.permissions ?? [],
-      users,
+      demo: session ? await isDemo() : false,
+      // Which API sign-in and publishing act on — public anyway (NEXT_PUBLIC_API_URL);
+      // scripts/e2e.mjs refuses to run unless it is local.
+      api: API,
     },
   });
 }
 
-/**
- * Mock sign-in. Body: { email } or { userId }.
- *
- * No password is checked — this is a demo gate, not authentication. It exists
- * so a reviewer can enter as any role and watch the permission matrix change
- * what the UI offers.
- */
+/** Sign in against the hadith API. Body: { email, password } */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
+  const email = String(body.email ?? '').trim();
+  const password = String(body.password ?? '');
 
-  const session = body.email
-    ? await sessionForEmail(String(body.email))
-    : await sessionForUser(Number(body.userId));
-
-  if (!session) {
-    return Response.json(
-      { success: false, error: 'ئەم ئیمەیلە لە سیستەمدا نییە' },
-      { status: 404 },
-    );
+  if (!email || !password) {
+    return Response.json({ success: false, error: 'ئیمەیل و وشەی نهێنی بنووسە' }, { status: 400 });
   }
 
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, String(session.user.id), {
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30,
-    sameSite: 'lax',
-  });
+  const result = await signIn(email, password);
+  if ('error' in result) {
+    return Response.json({ success: false, error: result.error }, { status: result.status });
+  }
 
-  return Response.json({ success: true, data: session });
+  const { user, permissions } = result.session;
+  return Response.json({ success: true, data: { user, permissions } });
 }
 
 /** Sign out. */
 export async function DELETE() {
-  const jar = await cookies();
-  jar.delete(SESSION_COOKIE);
+  await signOut();
   return Response.json({ success: true });
 }

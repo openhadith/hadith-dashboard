@@ -8,45 +8,71 @@ That split is deliberate: this is a dense, keyboard-driven workstation that owns
 the viewport, while the public site is a document-oriented, SEO-driven reading
 experience. They share no runtime and deploy independently.
 
+It needs the hadith API running, because sign-in and publishing go through it.
+Locally that is `hadith_platform_backend` against its own development database —
+**never point a local dashboard at production**: whatever API `.env` names is
+the one you sign in to and publish into.
+
 ```bash
+# 1. the API, on a local copy of the corpus (see its migrations/README.md)
+cd ../hadith_platform_backend
+createdb hadith_corpus_dev
+export DATABASE_URL=postgresql://$(whoami)@localhost:5432/hadith_corpus_dev
+npm run dev:db && PORT=4005 npm run dev
+
+# 2. the dashboard
+cd ../ui-design
 npm install
-npm run db:setup    # creates the local database, applies schema, seeds from the live API
-npm run dev         # http://localhost:3006
+npm run db:setup    # workflow database + demo queue, seeded from the local API
+npm run dev         # http://localhost:3006 — sign in as zana@muhaqqiq.org / hadith-dev
 ```
 
-`npm run db:reset` drops and rebuilds from scratch. Seeding takes ~30s because it
-pulls real hadiths from `api.openhadith.org`.
-
-Requires a local PostgreSQL (built against 16) reachable at
-`postgresql://localhost:5432`. Override with `STUDIO_DATABASE_URL` in `.env`.
+`npm run db:reset` drops and rebuilds the workflow database. Requires a local
+PostgreSQL (built against 16) at `postgresql://localhost:5432`; override with
+`STUDIO_DATABASE_URL` in `.env`.
 
 ---
 
-## How the data is split
+## How the data flows
 
 ```
-  corpus (read-only)                dashboard state (read/write)
-  ──────────────────                ────────────────────────────
-  api.openhadith.org                postgres://localhost/hadith_studio
-  1.1M hadiths, 1400 books          statuses, assignments, issues, revisions,
-  49,863 narrators                  audit, teams, permissions, entity edits
-         │                                      │
-         └───────────── dashboard ──────────────┘
+  hadith API (owns the corpus + accounts)      dashboard (owns the workflow)
+  ───────────────────────────────────────      ─────────────────────────────
+  api.openhadith.org → hadith_db               postgres …/hadith_studio
+  hadiths, isnads, narrators, books            queue, assignments, issues, teams,
+  users, roles, role × permission matrix       drafts, audit, activity
+  corpus_revisions (every published change)
+         ▲    │ reads                                     │
+         │    └──────────────► dashboard ◄────────────────┘
+         └── sign-in, publish, revert, accounts ──┘
+                 │
+                 └──► openhadith.org reads the same API, so a publish is live at once
 ```
 
-Two rules follow, and they are why this is safe to run against live data:
+The rules:
 
-1. **The dashboard never writes to the corpus.** Content is fetched over HTTP
-   from the same public API the reading site uses. Creating, editing or deleting
-   a record writes to `studio_entities` instead; the view you see is the two
-   merged on read.
-2. **The local database is disposable.** `dropdb hadith_studio` returns you to
-   zero. Nothing else is affected.
+1. **Edits are drafts.** Saving a hadith, narrator, book or chain writes a
+   `studio_entities` row holding only the fields that differ from the corpus.
+   The dashboard shows the draft merged over the corpus; the public site does
+   not see it.
+2. **Approving publishes.** Approving a hadith (workstation or queue), or
+   *پاشەکەوت و بڵاوکردنەوە* on a record, sends the draft to the API, which
+   checks the `approve` permission itself, applies only the changed columns in
+   one transaction and records a revision. The status becomes **بڵاوکراوە** when
+   the public site changed, **پەسەندکراو** when there was nothing to send.
+3. **Every publish is revertable.** The audit entry carries the API's revision
+   id; reverting it re-applies the old values — unless the record has changed
+   since, in which case the API refuses rather than overwrite that later work.
+4. **The dashboard never holds corpus credentials.** It reaches the corpus only
+   through the API, with the signed-in user's own token.
 
-**The public website is never modified from here.** A hadith edited in the
-dashboard looks edited *in the dashboard only* — reload the public page and it is
-untouched. Wiring edits through would need a publish gate on the corpus side
-(BRD §7.4, FR-VER-006) that does not exist yet.
+What publishes: a hadith's `matn`, `full_hadith` and `type`; narrator and book
+columns; and a reordered chain — **only for hadiths with a single sanad**. A
+hadith with several sanads is a branching structure the flat chain editor
+cannot represent, so its chain edits are refused (the editor warns first).
+Fields marked **تەنها لێرە** in the edit form (notes, the demo grade, citation
+numbers), dashboard-only types (authors, chapters, glossary, topics), newly
+created records and deletions all stay in the dashboard.
 
 ---
 
@@ -71,11 +97,11 @@ To view them, serve the folder statically, e.g. `npx serve design`.
 Seven record types, all through one generic screen driven by the field
 definitions in `src/lib/entities.ts`:
 
-| Type | Mirrors the corpus? |
+| Type | Publishes to the corpus? |
 |---|---|
-| حەدیس · hadith | yes |
-| ڕاویان · narrator | yes |
-| پەرتووکەکان · book | yes |
+| حەدیس · hadith | yes — matn, full text, type |
+| ڕاویان · narrator | yes — every field |
+| پەرتووکەکان · book | yes — every field but the author name |
 | نووسەران · author | dashboard-only |
 | بابەتەکان · chapter | dashboard-only |
 | فەرهەنگ · word (glossary) | dashboard-only |
@@ -83,8 +109,9 @@ definitions in `src/lib/entities.ts`:
 
 Three storage cases, all in `studio_entities`:
 
-- `origin='corpus'` — an **override**: these fields win over the corpus record
-  of the same id when it is read back.
+- `origin='corpus'` — a **draft**: only the fields that differ from the corpus
+  record of the same id, shown merged over it until published (or discarded —
+  saving values equal to the corpus again removes the draft).
 - `origin='local'` — a record that exists **only here**, with a `local:<n>` id
   that can never collide with a corpus id.
 - `deleted_at IS NOT NULL` — a **tombstone**: hidden from listings, never
@@ -95,7 +122,8 @@ pages are placeholders with no table behind them, so those records are native to
 the dashboard rather than overrides.
 
 Adding a field to `entities.ts` adds a table column and a form input with no
-further work.
+further work. Marking it `publish: true` makes approved edits to it reach the
+corpus — only for fields that map 1:1 onto a column the API accepts.
 
 ### Editing an isnad
 
@@ -105,6 +133,12 @@ doubtful with a note (e.g. «عنعنة مدلس»). The whole ordered chain is 
 `studio_entities` row of type `isnad`; when one exists it replaces the corpus
 chain on both the workstation and the sanad explorer. **ڕەسەن** discards it.
 Duplicate narrators and empty chains are rejected server-side.
+
+Approving the hadith publishes the chain: the API rewrites only the links whose
+(narrator, told-by) pair changed, keeping each surviving link's row and
+attributes. It refuses hadiths with more than one sanad — the editor shows how
+many there are and warns before you start. The «doubtful» flags have no corpus
+column; they stay in the dashboard as annotations on the published chain.
 
 ---
 
@@ -116,10 +150,11 @@ Being precise about this matters — some of it is scholarly content.
 book and author metadata, recorded `hukmText`, scholarly assessments
 (`إسناد N: …`) and their grades.
 
-**Demo, generated by `db/seed.mjs`:** workflow statuses, assignees, teams,
-detected "issues", the audit history, and the per-row `grade` on queue rows.
-Seeded rows carry `snapshot.gradeSource = 'demo'` and the UI marks the session
-with a **نموونە** badge in the top bar.
+**Demo, generated by `db/seed.mjs` (`npm run db:setup`):** workflow statuses,
+assignees, teams, detected "issues", the audit history, and the per-row `grade`
+on queue rows. Seeded rows carry `snapshot.gradeSource = 'demo'` and the UI
+marks the session with a **نموونە** badge in the top bar. **Never seed a
+production database** — production uses `npm run db:init`, schema only.
 
 The one thing to keep straight when demoing: **a queue row's grade chip is demo
 metadata, not a ruling.** The real ruling is the `hukmText` and the assessment
@@ -131,33 +166,33 @@ The statistics screen deliberately has no grade chart, for the same reason.
 
 ## Identity and permissions
 
-Sign in at `/login` — pick one of the eight seeded accounts or type an email.
-**No password is checked.** A bare handle works too (`soran` finds
-`soran@muhaqqiq.org`).
+Accounts live in the hadith API, the same `users` table the public site's API
+uses. `/login` takes an email and password, the API checks them and returns a
+JWT, and the dashboard keeps it in an httpOnly cookie. Public registration is
+closed; admins create accounts under **بەکارهێنەر و تیم → بەکارهێنەران → هەژماری
+نوێ**, and the first admin is made on the server with the API's
+`npm run user:grant`.
 
-`?as=<handle>` signs straight in and `?next=/queue` says where to land, so a demo
-can hand out one link per role:
+Each account gets a dashboard profile (`studio_users`, linked by
+`backend_user_id`) for teams, workload and presence. A profile seeded with the
+same email as an account is claimed on first sign-in, which is how the demo
+cast keeps its queue.
 
-```
-/login?as=rebin&next=/queue     # viewer, read-only
-/login?as=soran&next=/hadiths   # editor, can edit but not delete
-/login?as=zana                  # supervisor, everything
-```
+Signing out revokes the token at the API, not just the cookie. Ten failed
+sign-ins lock an account for up to 15 minutes (the API counts them per account).
 
-Permissions, however, are real. They resolve from `studio_permissions` — the same
-five-roles × six-permissions matrix that **بەکارهێنەر و تیم → ڕۆڵ و مۆڵەت**
-edits — and every mutating endpoint checks them server-side:
+Permissions resolve from the API's role × permission matrix — the one
+**ڕۆڵ و مۆڵەت** edits — and are enforced twice: by the dashboard on every
+mutating endpoint, and by the API on every corpus write. Changing a cell applies
+on the next request:
 
-1. Sign in as **ه. ڕێبین** (viewer). Queue actions grey out; forcing the request
-   returns `403`.
-2. Sign in as a supervisor, open the role matrix, tick **بینەر → پەسەند**.
-3. Sign in as ڕێبین again — approving now works.
+1. Sign in as `soran@muhaqqiq.org` (editor). Approve is disabled; forcing it
+   returns `403` from the dashboard, and the API would refuse too.
+2. As a supervisor, tick **دەستکار → پەسەند** in the matrix.
+3. Back as soran — approving now publishes.
 
 Deletion is gated on `merge` rather than `edit`, so an editor can change records
 but not remove them.
-
-When this graduates past demo, only `readSession()` changes: swap the cookie for
-a verified JWT and every `can()` / `requirePermission()` call keeps working.
 
 ---
 
@@ -165,7 +200,7 @@ a verified JWT and every `can()` / `requirePermission()` call keeps working.
 
 | Route | What it shows |
 |---|---|
-| `/login` | Mock sign-in: role cards with their permissions, or any email |
+| `/login` | Email and password, checked by the API; development accounts listed when not in production |
 | `/` | KPIs, week chart, corpus health, resume strip, team timeline, leaderboard |
 | `/queue` | Validation queue — segmented filters, bulk actions, saved views, keyboard nav |
 | `/hadith/[id]` | Workstation — matn editor, isnad editor, assessments, save→next (⌘↵) |
@@ -223,13 +258,49 @@ by id such as `HDT-4508`, and live corpus search); `↑↓` move, `Space` select
 
 ## Known gaps
 
-- **No real authentication.** See above.
-- **Nothing reaches the public site.** By design for now.
-- **Two-person approval** (BRD §7.2) is not enforced — sensitive actions check a
+- **Two-person approval** (BRD §7.2) is not enforced — publishing checks a
   single permission.
+- **Branched isnads** (more than one sanad) cannot be edited as a chain.
+- **Creating and deleting corpus records** is dashboard-only; so are authors,
+  chapters, glossary and topics, and citation numbers (hadith number, page).
+- **Queue population:** the demo seed fills the queue; in production a hadith
+  enters it when first saved or decided on. Importing a book into the queue is
+  not built.
 - **Bulk reindex / bulk delete** on the quality screen are intentionally inert.
-- **`studio_revisions` are never applied.** Drafts accumulate; nothing consumes
-  them yet.
+
+---
+
+## Tests
+
+```bash
+npm test        # unit tests: what publishing sends, keeps and refuses (API and DB mocked)
+npm run e2e     # the whole loop against the local stack: draft → approve → public → revert
+```
+
+`npm run e2e` needs the dashboard on :3006 and the API on :4005 with
+`npm run dev:db` data. It publishes and reverts real records, so it first asks
+the dashboard which API it is connected to and refuses unless that is local.
+Sign-in lockout, token revocation and the API's write rules are covered by the
+API's own integration tests (`npm run test:integration` there).
+
+---
+
+## Deploying
+
+Nothing here deploys itself; each step is deliberate.
+
+1. **API** (`hadith_platform_backend`): make sure `JWT_SECRET` is in the
+   server's environment (the API now refuses to start without it), take a
+   `pg_dump`, run `npm run migrate:editorial`, deploy the code, then
+   `npm run user:grant -- <you> supervisor`.
+2. **Dashboard**: a Postgres database for the workflow (`createdb hadith_studio`
+   and `npm run db:init` — not `db:setup`), then `npm run build && npm start`
+   (port 3006) under pm2 with `NEXT_PUBLIC_API_URL=https://api.openhadith.org/api`,
+   `STUDIO_DATABASE_URL`, `NEXT_PUBLIC_SITE_URL=https://openhadith.org` and
+   `NODE_ENV=production` (secure cookies, no development accounts on the login
+   page), behind nginx with TLS on its own host name.
+3. **Public site** (`hadith_platform`): build with `DASHBOARD_URL` set to that
+   host name; `/login` and `/verification` redirect there. Ship after step 2.
 
 ---
 
@@ -237,15 +308,18 @@ by id such as `HDT-4508`, and live corpus search); `↑↓` move, `Space` select
 
 ```
 design/                        original design comps (reference, not built)
-db/schema.sql                  workflow schema (11 tables, pg_trgm)
-db/schema-entities.sql         CRUD storage (studio_entities)
-db/seed.mjs                    seeds from the live API, fixed-seed PRNG
+db/schema.sql                  workflow schema (10 tables, pg_trgm)
+db/schema-entities.sql         drafts (studio_entities)
+db/seed.mjs                    demo workflow, seeded from the API, fixed-seed PRNG
 src/lib/db.ts                  pool + audit() helper
-src/lib/session.ts             cookie identity, permission resolution
+src/lib/backend.ts             authenticated calls to the hadith API
+src/lib/session.ts             sign-in through the API, profiles, permission checks
+src/lib/accounts.ts            accounts and the permission matrix, via the API
+src/lib/publish.ts             drafts → API: records, chains, approval
 src/lib/corpus.ts              read-only corpus client, chain ordering, grade mapping
 src/lib/entities.ts            field definitions driving every CRUD screen
-src/lib/crud.ts                corpus/dashboard merge, create/update/delete/restore
-src/lib/isnad.ts               edited-chain storage and loading
+src/lib/crud.ts                corpus/draft merge, create/update/delete/restore
+src/lib/isnad.ts               chain drafts and reviewer flags
 src/lib/stats.ts               statistics queries
 src/lib/theme.ts               AntD token mapping
 src/lib/tokens.ts              palette, status/issue/grade maps, Arabic numerals

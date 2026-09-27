@@ -1,14 +1,11 @@
--- Studio demo schema.
+-- Dashboard workflow schema.
 --
--- This lives in its own database (`hadith_studio`), deliberately apart from the
--- 1.1M-row corpus behind api.openhadith.org. The corpus is read-only as far as
--- the studio is concerned: every table here either describes *governance*
--- (who works on what) or *workflow* (what state a record is in), and refers to
--- corpus rows only by the id the public API already exposes.
---
--- Keeping the two apart is what makes the MVP safe to demo: nothing in here can
--- corrupt published content, and the whole thing is one `dropdb` away from a
--- clean slate.
+-- This lives in its own database (`hadith_studio`), apart from the corpus. The
+-- dashboard never writes the corpus directly: approved drafts are published
+-- through the hadith API, which owns the corpus, the accounts and the role x
+-- permission matrix. Every table here describes *governance* (who works on
+-- what) or *workflow* (what state a record is in, what is drafted), and refers
+-- to corpus rows only by the id the API exposes.
 
 -- Trigram similarity backs the duplicate-detection screens: it is how the
 -- Compare view finds the closest pair without a precomputed cluster table.
@@ -22,8 +19,13 @@ DROP TABLE IF EXISTS studio_activity, studio_saved_views, studio_audit,
 
 -- ---------------------------------------------------------------- governance
 
+-- The dashboard's profile of an API account. Identity, password and role live
+-- in the API (users / user_has_roles); `role` here is a copy for list screens,
+-- refreshed on every sign-in.
 CREATE TABLE studio_users (
   id          serial PRIMARY KEY,
+  -- users.id in the hadith API; NULL until the account first signs in
+  backend_user_id bigint UNIQUE,
   name        text NOT NULL,
   email       text UNIQUE NOT NULL,
   -- supervisor | muhaqqiq | editor | reviewer | viewer
@@ -59,15 +61,10 @@ CREATE TABLE studio_team_books (
   PRIMARY KEY (team_id, book_id)
 );
 
--- The editable role x permission matrix from the Admin Users comp.
--- Stored as rows rather than a bitmask so the UI can toggle one cell at a time.
-CREATE TABLE studio_permissions (
-  role       text NOT NULL,
-  -- view | edit | approve | reject | merge | admin
-  permission text NOT NULL,
-  allowed    boolean NOT NULL DEFAULT false,
-  PRIMARY KEY (role, permission)
-);
+-- The role x permission matrix is not stored here: it lives in the API's
+-- roles / permissions / role_has_permissions tables, which the API also
+-- enforces on every corpus write. (studio_permissions stays in the DROP list
+-- above only so older databases are cleaned up.)
 
 -- ------------------------------------------------------------------ workflow
 
@@ -110,8 +107,8 @@ CREATE TABLE studio_issues (
 CREATE INDEX studio_issues_review_idx ON studio_issues (review_id);
 CREATE INDEX studio_issues_open_idx   ON studio_issues (type) WHERE resolved_at IS NULL;
 
--- Draft edits. Replaces the dropped `log_hadiths` pattern: a revision is never
--- applied to the corpus, it just records what a reviewer would change.
+-- Save history from the workstation (what changed, with the reviewer's note).
+-- The live draft itself is the studio_entities row; this is its trail.
 CREATE TABLE studio_revisions (
   id          serial PRIMARY KEY,
   entity_type text NOT NULL,
@@ -135,6 +132,9 @@ CREATE TABLE studio_audit (
   before      jsonb,
   after       jsonb,
   reason      text,
+  -- external reference; for 'publish' rows, the API's corpus_revisions id,
+  -- which is what reverting a publish undoes
+  ref         text,
   -- marks that a *later* row undid this one, for the UI's "reverted" ribbon
   reverted    boolean NOT NULL DEFAULT false,
   created_at  timestamptz NOT NULL DEFAULT now()

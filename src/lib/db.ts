@@ -56,10 +56,11 @@ export async function audit(entry: {
   before?: unknown;
   after?: unknown;
   reason?: string | null;
+  ref?: string | null;
 }) {
   await query(
-    `INSERT INTO studio_audit (actor_id, action, entity_type, entity_id, before, after, reason)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    `INSERT INTO studio_audit (actor_id, action, entity_type, entity_id, before, after, reason, ref)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
     [
       entry.actorId,
       entry.action,
@@ -68,6 +69,7 @@ export async function audit(entry: {
       entry.before === undefined ? null : JSON.stringify(entry.before),
       entry.after === undefined ? null : JSON.stringify(entry.after),
       entry.reason ?? null,
+      entry.ref ?? null,
     ],
   );
 }
