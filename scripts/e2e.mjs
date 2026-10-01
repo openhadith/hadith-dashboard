@@ -51,7 +51,7 @@ if (!LOCAL.has(new URL(DASH).hostname)) {
   process.exit(2);
 }
 const probe = await (await fetch(`${DASH}/api/session`)).json();
-const API = probe?.data?.api;
+const API = probe?.data?.corpusSource?.url;
 if (!API || !LOCAL.has(new URL(API).hostname)) {
   console.error(`Refusing: the dashboard publishes to ${API ?? 'an unknown API'}, not a local one.`);
   process.exit(2);

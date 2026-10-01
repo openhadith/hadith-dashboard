@@ -2,6 +2,9 @@ import { queryOne } from '@/lib/db';
 import { API } from '@/lib/backend';
 import { readSessionOrNull, signIn, signOut } from '@/lib/session';
 
+/** The one corpus that is actually published to openhadith.org. */
+const LIVE_CORPUS = /(^|\/\/)api\.openhadith\.org/;
+
 // Seeded rows are marked; production (db:init) has none. Checked once per process.
 let demo: Promise<boolean> | null = null;
 const isDemo = () =>
@@ -18,9 +21,11 @@ export async function GET() {
       user: session?.user ?? null,
       permissions: session?.permissions ?? [],
       demo: session ? await isDemo() : false,
-      // Which API sign-in and publishing act on — public anyway (NEXT_PUBLIC_API_URL);
-      // scripts/e2e.mjs refuses to run unless it is local.
-      api: API,
+      // Which corpus sign-in and publishing act on. Public anyway
+      // (NEXT_PUBLIC_API_URL); the chrome shows it so nobody has to guess
+      // whether approving reaches the public site, and scripts/e2e.mjs
+      // refuses to run unless it is local.
+      corpusSource: { url: API, live: LIVE_CORPUS.test(API) },
     },
   });
 }

@@ -181,6 +181,11 @@ Each account gets a dashboard profile (`studio_users`, linked by
 same email as an account is claimed on first sign-in, which is how the demo
 cast keeps its queue.
 
+The top bar names the corpus this dashboard is pointed at: a green
+**کۆپیی تاقیکردنەوە** chip for a test copy, a red **داتای ڕاستەقینە** chip when
+it is the live one and approving reaches readers immediately. It comes from
+`NEXT_PUBLIC_API_URL`, so it cannot drift from where publishing actually goes.
+
 Signing out revokes the token at the API, not just the cookie. Ten failed
 sign-ins lock an account for up to 15 minutes (the API counts them per account).
 

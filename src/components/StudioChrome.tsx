@@ -52,6 +52,9 @@ const ADMIN_NAV: NavItem[] = [
   { key: '/admin/quality', icon: <DatabaseOutlined />, label: 'جۆری داتا' },
 ];
 
+/** Just the host, so the chip names the source without a URL in the chrome. */
+const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+
 /** The header label for the current route — the page's name, beside the brand. */
 const TITLES: Record<string, string> = Object.fromEntries(
   [...WORK_NAV, ...DATA_NAV, ...ADMIN_NAV].map((i) => [i.key, i.label]),
@@ -68,7 +71,7 @@ export default function StudioChrome({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, can, logout, demo } = useStudio();
+  const { user, loading, can, logout, demo, corpusSource } = useStudio();
 
   const bare = BARE_ROUTES.some((r) => pathname.startsWith(r));
 
@@ -195,8 +198,27 @@ export default function StudioChrome({
             />
           </Tooltip>
 
+          {/* Whether approving reaches readers is the single most important
+              thing to know before using this screen, so it is stated, not implied. */}
+          {corpusSource.url && (
+            <Tooltip
+              title={
+                corpusSource.live
+                  ? `${hostOf(corpusSource.url)} — پەسەندکردن یەکسەر لە ماڵپەڕی گشتیدا دەردەکەوێت`
+                  : `${hostOf(corpusSource.url)} — کۆپییەکی تاقیکردنەوەیە؛ هیچ گۆڕانکارییەک ناگاتە ماڵپەڕی گشتی`
+              }
+            >
+              <Tag
+                color={corpusSource.live ? 'error' : 'success'}
+                style={{ marginInlineEnd: 0 }}
+              >
+                {corpusSource.live ? 'داتای ڕاستەقینە' : 'کۆپیی تاقیکردنەوە'}
+              </Tag>
+            </Tooltip>
+          )}
+
           {demo && (
-            <Tooltip title="دۆخی کار، تیم و پلەکانی ڕیز نموونەیین. پەسەندکردن هێشتا لە API ـی بەستراودا بڵاو دەکاتەوە.">
+            <Tooltip title="دۆخی کار، تیم و پلەکانی ڕیز نموونەیین — نەک حوکمی زانایان.">
               <Tag color="warning" style={{ marginInlineEnd: 0 }}>نموونە</Tag>
             </Tooltip>
           )}
