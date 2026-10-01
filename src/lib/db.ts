@@ -18,10 +18,20 @@ export const pool =
   new Pool({
     connectionString:
       process.env.STUDIO_DATABASE_URL || 'postgresql://localhost:5432/hadith_studio',
-    max: 10,
+    // One pool per running instance. A long-lived server has exactly one and
+    // can afford a wide pool; serverless has one per concurrent invocation, so
+    // the same number there multiplies into hundreds of connections and
+    // exhausts a small managed Postgres. Override with STUDIO_DB_POOL_MAX.
+    max: Number(process.env.STUDIO_DB_POOL_MAX) || (process.env.VERCEL ? 2 : 10),
+    // Managed Postgres hangs up on idle clients; let the pool drop them first
+    // so a reused instance never picks up a dead connection.
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
   });
 
-if (process.env.NODE_ENV !== 'production') globalForPool.studioPool = pool;
+// Cached so a hot reload in development, or a reused serverless instance, does
+// not open a second pool and leak the first one's connections.
+globalForPool.studioPool = pool;
 
 /** Runs a parameterised query and returns the rows. */
 export async function query<T = Record<string, unknown>>(
