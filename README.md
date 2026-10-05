@@ -21,7 +21,7 @@ export DATABASE_URL=postgresql://$(whoami)@localhost:5432/hadith_corpus_dev
 npm run dev:db && PORT=4005 npm run dev
 
 # 2. the dashboard
-cd ../ui-design
+cd ../hadith-dashboard
 npm install
 npm run db:setup    # workflow database + demo queue, seeded from the local API
 npm run dev         # http://localhost:3006 — sign in as zana@muhaqqiq.org / hadith-dev
