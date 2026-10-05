@@ -1,6 +1,7 @@
 import { queryOne } from '@/lib/db';
 import { API } from '@/lib/backend';
-import { readSessionOrNull, signIn, signOut } from '@/lib/session';
+import { LOCAL_SIGNIN, READ_ONLY } from '@/lib/config';
+import { readSessionOrNull, signIn, signInLocal, signOut } from '@/lib/session';
 
 /** The one corpus that is actually published to openhadith.org. */
 const LIVE_CORPUS = /(^|\/\/)api\.openhadith\.org/;
@@ -26,21 +27,33 @@ export async function GET() {
       // whether approving reaches the public site, and scripts/e2e.mjs
       // refuses to run unless it is local.
       corpusSource: { url: API, live: LIVE_CORPUS.test(API) },
+      readOnly: READ_ONLY,
+      localSignin: LOCAL_SIGNIN,
     },
   });
 }
 
-/** Sign in against the hadith API. Body: { email, password } */
+/**
+ * Sign in. Body: { email, password }, or { userId } under LOCAL_SIGNIN.
+ *
+ * The two are mutually exclusive — each refuses when the other's mode is
+ * active — so a deployment cannot be signed in to by a route it did not mean
+ * to offer.
+ */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const email = String(body.email ?? '').trim();
-  const password = String(body.password ?? '');
 
-  if (!email || !password) {
-    return Response.json({ success: false, error: 'ئیمەیل و وشەی نهێنی بنووسە' }, { status: 400 });
-  }
+  const result = LOCAL_SIGNIN
+    ? await signInLocal(body.userId)
+    : await (async () => {
+        const email = String(body.email ?? '').trim();
+        const password = String(body.password ?? '');
+        if (!email || !password) {
+          return { error: 'ئیمەیل و وشەی نهێنی بنووسە', status: 400 } as const;
+        }
+        return signIn(email, password);
+      })();
 
-  const result = await signIn(email, password);
   if ('error' in result) {
     return Response.json({ success: false, error: result.error }, { status: result.status });
   }

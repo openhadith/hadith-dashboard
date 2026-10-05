@@ -7,7 +7,7 @@ import { Avatar, Dropdown, Segmented, Spin, Tag, Tooltip } from 'antd';
 import {
   AppstoreOutlined, AuditOutlined, BankOutlined, BarChartOutlined, BookOutlined,
   CheckSquareOutlined, DatabaseOutlined, DeploymentUnitOutlined, DiffOutlined,
-  ExportOutlined, LogoutOutlined, ReadOutlined, SafetyOutlined, ScheduleOutlined,
+  ExportOutlined, EyeOutlined, LogoutOutlined, ReadOutlined, SafetyOutlined, ScheduleOutlined,
   SwapOutlined, TagsOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { useStudio } from './StudioContext';
@@ -71,7 +71,7 @@ export default function StudioChrome({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, can, logout, demo, corpusSource } = useStudio();
+  const { user, loading, can, logout, demo, corpusSource, readOnly } = useStudio();
 
   const bare = BARE_ROUTES.some((r) => pathname.startsWith(r));
 
@@ -197,6 +197,12 @@ export default function StudioChrome({
               ]}
             />
           </Tooltip>
+
+          {readOnly && (
+            <Tooltip title="هیچ گۆڕانکارییەک پاشەکەوت ناکرێت و هیچ شتێک بڵاو ناکرێتەوە">
+              <Tag icon={<EyeOutlined />} style={{ marginInlineEnd: 0 }}>خوێندنەوە</Tag>
+            </Tooltip>
+          )}
 
           {/* Whether approving reaches readers is the single most important
               thing to know before using this screen, so it is stated, not implied. */}

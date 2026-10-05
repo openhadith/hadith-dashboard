@@ -1,4 +1,5 @@
 import { backend } from './backend';
+import { READ_ONLY } from './config';
 import { audit, query, queryOne } from './db';
 import { ENTITIES, publishableFields, type EntityType } from './entities';
 import { corpusRecord, sameValue } from './crud';
@@ -22,6 +23,23 @@ export interface PublishResult {
   error?: string;
   code?: string | null;
   status?: number;
+}
+
+/**
+ * Publishing is the only thing here that leaves the dashboard, so it checks the
+ * deployment mode itself rather than trusting that a caller already did. Every
+ * route into it is behind `approve`, which READ_ONLY refuses — this is the
+ * second lock on the same door.
+ */
+function refuseWhenReadOnly(): PublishResult | null {
+  if (!READ_ONLY) return null;
+  return {
+    ok: false,
+    changed: false,
+    status: 403,
+    code: 'read_only',
+    error: 'ئەم دەزگایە لە دۆخی خوێندنەوەدایە؛ هیچ شتێک بڵاو ناکرێتەوە',
+  };
 }
 
 const NUMERIC = new Set(['rutba', 'tabaqah', 'number_of_parts']);
@@ -58,6 +76,9 @@ export async function publishRecord(
   id: string,
   reason?: string | null,
 ): Promise<PublishResult> {
+  const refused = refuseWhenReadOnly();
+  if (refused) return refused;
+
   const fields = publishableFields(type);
   const plural = ENTITIES[type].corpusList;
   if (!fields.length || !plural || id.startsWith('local:')) {
@@ -126,6 +147,9 @@ export async function publishIsnad(
   hadithId: string,
   reason?: string | null,
 ): Promise<PublishResult> {
+  const refused = refuseWhenReadOnly();
+  if (refused) return refused;
+
   const draft = await queryOne<{ payload: { links?: EditableLink[] } }>(
     `SELECT payload FROM studio_entities
       WHERE entity_type = 'isnad' AND entity_id = $1 AND deleted_at IS NULL`,

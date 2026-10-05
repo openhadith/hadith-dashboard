@@ -150,12 +150,17 @@ check('bulk approval reports the refused row', bulk.json?.data?.failed?.map((f) 
 await editor('DELETE', `/api/isnad/${multi.row.entity_id}`);
 
 // ---------------------------------------------------------------- accounts
-const email = `e2e-${Date.now()}@example.test`;
+// A fixed address, not a timestamped one: there is no endpoint for deleting an
+// account, so a fresh address each run would pile up for ever in the account
+// list. 409 means a previous run already made it, which is just as good a pass.
+const email = 'e2e@example.test';
 const created = await sup('POST', '/api/admin/users', { name: 'E2E', email, password: 'long-enough', role: 'viewer' });
-check('admin creates an account in the API', created.status === 201);
+check('admin creates an account in the API', created.status === 201 || created.status === 409,
+  `status ${created.status}`);
 const fresh = client();
-check('new account signs in', (await fresh('POST', '/api/session', { email, password: 'long-enough' })).json?.data?.user?.role === 'viewer');
-await sup('PATCH', '/api/admin/users', { userId: created.json.data.id, role: 'editor' });
+const freshSession = await fresh('POST', '/api/session', { email, password: 'long-enough' });
+check('new account signs in', freshSession.json?.data?.user?.id !== undefined, JSON.stringify(freshSession.json));
+await sup('PATCH', '/api/admin/users', { userId: freshSession.json.data.user.id, role: 'editor' });
 check('role change applies at once', (await fresh('GET', '/api/session')).json.data.permissions.includes('edit'));
 
 // ---------------------------------------------------------------- sign-out

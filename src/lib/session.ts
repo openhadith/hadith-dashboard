@@ -1,6 +1,8 @@
 import { cookies } from 'next/headers';
-import { queryOne } from './db';
+import { redirect } from 'next/navigation';
+import { query, queryOne } from './db';
 import { backend } from './backend';
+import { LOCAL_SIGNIN, READ_ONLY, VIEW_ONLY_PERMISSIONS } from './config';
 
 /**
  * Identity comes from the hadith API.
@@ -13,6 +15,12 @@ import { backend } from './backend';
  * `studio_users` is this dashboard's profile of each account (avatar tone,
  * presence, team membership, workload), linked by `backend_user_id`. Its `id`
  * is what every workflow table references.
+ *
+ * Under LOCAL_SIGNIN the cookie holds a `studio_users.id` instead of a token
+ * and the API is never asked who anyone is. The two cookie shapes cannot be
+ * confused for one another: a token parses as NaN where an id is expected, and
+ * an id is rejected by the API where a token is expected, so switching modes
+ * invalidates existing sessions rather than misreading them.
  */
 
 export const SESSION_COOKIE = 'studio_token';
@@ -30,7 +38,7 @@ export interface StudioSession {
   user: StudioUser;
   /** Permission keys granted to this user's role: view, edit, approve, ... */
   permissions: string[];
-  /** The API token, for calls that act as this user (publishing). */
+  /** The API token, for calls that act as this user (publishing). Empty under LOCAL_SIGNIN. */
   token: string;
 }
 
@@ -85,6 +93,70 @@ export async function syncProfile(u: BackendUser, { touch = true } = {}): Promis
   );
 }
 
+/**
+ * What this session may do, after the deployment's own limits.
+ *
+ * Narrowing here rather than at each button is deliberate: the interface
+ * decides what to show from the same list the server enforces, so a read-only
+ * deployment cannot offer an action that would then be refused.
+ */
+function allowed(permissions: string[]): string[] {
+  if (!READ_ONLY) return permissions;
+  return permissions.filter((p) => (VIEW_ONLY_PERMISSIONS as readonly string[]).includes(p));
+}
+
+/** The accounts the local sign-in screen offers, most capable first. */
+export async function listLocalAccounts(): Promise<StudioUser[]> {
+  if (!LOCAL_SIGNIN) return [];
+  return query<StudioUser>(
+    `SELECT ${PROFILE} FROM studio_users ORDER BY
+       CASE role WHEN 'supervisor' THEN 0 WHEN 'muhaqqiq' THEN 1 WHEN 'editor' THEN 2
+                 WHEN 'reviewer' THEN 3 ELSE 4 END, id`,
+  );
+}
+
+/** Signs in as an existing profile, with no password. LOCAL_SIGNIN only. */
+export async function signInLocal(
+  userId: unknown,
+): Promise<{ session: StudioSession } | { error: string; status: number }> {
+  if (!LOCAL_SIGNIN) {
+    return { error: 'ئەم شێوازە چوونەژوورەوە ناچالاکە', status: 403 };
+  }
+  const id = Number(userId);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    return { error: 'هەژمارێک هەڵبژێرە', status: 400 };
+  }
+
+  const user = await queryOne<StudioUser>(
+    `SELECT ${PROFILE} FROM studio_users WHERE id = $1`,
+    [id],
+  );
+  if (!user) return { error: 'ئەم هەژمارە نەدۆزرایەوە', status: 404 };
+
+  await query(`UPDATE studio_users SET last_seen = now() WHERE id = $1`, [id]);
+
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, String(user.id), {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  return { session: { user, permissions: allowed(['view']), token: '' } };
+}
+
+async function localSession(raw: string): Promise<StudioSession | null> {
+  const id = Number(raw);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const user = await queryOne<StudioUser>(
+    `SELECT ${PROFILE} FROM studio_users WHERE id = $1`,
+    [id],
+  );
+  return user ? { user, permissions: allowed(['view']), token: '' } : null;
+}
+
 async function resolve(token: string): Promise<Entry | null> {
   const hit = cache.get(token);
   if (hit && Date.now() - hit.at < TTL_MS) return hit;
@@ -108,6 +180,10 @@ export async function signIn(
   email: string,
   password: string,
 ): Promise<{ session: StudioSession } | { error: string; status: number }> {
+  if (LOCAL_SIGNIN) {
+    return { error: 'ئەم شێوازە چوونەژوورەوە ناچالاکە', status: 403 };
+  }
+
   const r = await backend<{ token: string; user: BackendUser; permissions: string[] }>('/auth/login', {
     method: 'POST',
     body: { email, password },
@@ -130,6 +206,8 @@ export async function signIn(
 
   const user = await syncProfile(r.data.user);
   const { token, permissions } = r.data;
+  // Cached as granted; narrowed on the way out, so turning READ_ONLY off does
+  // not leave stale view-only entries behind.
   cache.set(token, { at: Date.now(), permissions, user });
 
   const jar = await cookies();
@@ -142,13 +220,15 @@ export async function signIn(
     maxAge: 60 * 60 * 24 * 7,
   });
 
-  return { session: { user, permissions, token } };
+  return { session: { user, permissions: allowed(permissions), token } };
 }
 
 export async function signOut() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) {
+  // Under LOCAL_SIGNIN the cookie is an id, not a token: there is nothing at
+  // the API to revoke, and sending it there would only produce a 401.
+  if (token && !LOCAL_SIGNIN) {
     cache.delete(token);
     // Revoked at the API, so a copied cookie stops working too.
     await backend('/auth/logout', { method: 'POST', token });
@@ -159,11 +239,14 @@ export async function signOut() {
 /** The signed-in session, or null when nobody (or an account without access) is signed in. */
 export async function readSessionOrNull(): Promise<StudioSession | null> {
   const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-  const entry = await resolve(token);
+  const raw = jar.get(SESSION_COOKIE)?.value;
+  if (!raw) return null;
+
+  if (LOCAL_SIGNIN) return localSession(raw);
+
+  const entry = await resolve(raw);
   if (!entry || !entry.permissions.includes('view')) return null;
-  return { user: entry.user, permissions: entry.permissions, token };
+  return { user: entry.user, permissions: allowed(entry.permissions), token: raw };
 }
 
 /**
@@ -178,8 +261,38 @@ export async function readSession(): Promise<StudioSession> {
   return session;
 }
 
-/** Guard for mutating endpoints. Returns null when allowed, a Response when not. */
+/**
+ * Guard for a whole screen, for pages whose data is not for everyone.
+ *
+ * Hiding a link in the navigation is not a guard — the URL can simply be
+ * typed — so the page itself refuses and sends the person somewhere they are
+ * allowed to be.
+ */
+export async function requirePermissionPage(permission: string): Promise<StudioSession> {
+  const session = await readSessionOrNull();
+  if (!session) redirect('/login');
+  if (!session.permissions.includes(permission)) redirect('/');
+  return session;
+}
+
+/**
+ * Guard for mutating endpoints. Returns null when allowed, a Response when not.
+ *
+ * Every endpoint that changes anything passes through here, which is what makes
+ * READ_ONLY total rather than a matter of which buttons the interface drew.
+ */
 export function requirePermission(session: StudioSession, permission: string) {
+  if (READ_ONLY && !(VIEW_ONLY_PERMISSIONS as readonly string[]).includes(permission)) {
+    return Response.json(
+      {
+        success: false,
+        error: 'ئەم دەزگایە لە دۆخی خوێندنەوەدایە؛ هیچ گۆڕانکارییەک پاشەکەوت ناکرێت',
+        permission,
+        code: 'read_only',
+      },
+      { status: 403 },
+    );
+  }
   if (session.permissions.includes(permission)) return null;
   return Response.json(
     {

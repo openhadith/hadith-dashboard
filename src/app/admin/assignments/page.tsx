@@ -1,4 +1,5 @@
 import { query } from '@/lib/db';
+import { requirePermissionPage } from '@/lib/session';
 import AssignmentsView from '@/components/AssignmentsView';
 import SetupNotice from '@/components/SetupNotice';
 
@@ -12,6 +13,8 @@ interface Loaded {
 }
 
 export default async function AssignmentsPage() {
+  await requirePermissionPage('admin');
+
   let loaded: Loaded | null = null;
   let error: string | undefined;
 

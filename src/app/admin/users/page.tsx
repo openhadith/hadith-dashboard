@@ -1,6 +1,6 @@
 import { query } from '@/lib/db';
 import { permissionMatrix, refreshAccounts } from '@/lib/accounts';
-import { readSession } from '@/lib/session';
+import { requirePermissionPage } from '@/lib/session';
 import AdminUsersView from '@/components/AdminUsersView';
 import SetupNotice from '@/components/SetupNotice';
 
@@ -11,11 +11,14 @@ interface Loaded {
 }
 
 export default async function AdminUsersPage() {
+  // Outside the try on purpose: redirect() signals by throwing, so a catch
+  // around it would swallow the redirect and render the page anyway.
+  const session = await requirePermissionPage('admin');
+
   let loaded: Loaded | null = null;
   let error: string | undefined;
 
   try {
-    const session = await readSession();
     // Accounts live in the API; bring any created or changed elsewhere into view.
     await refreshAccounts(session);
 

@@ -21,6 +21,8 @@ interface StudioState {
   demo: boolean;
   /** The corpus this dashboard reads and publishes to. */
   corpusSource: { url: string; live: boolean };
+  /** The deployment refuses every write; `can` already reflects it. */
+  readOnly: boolean;
   loading: boolean;
   /** True when the current role grants this permission. Drives every affordance. */
   can: (permission: string) => boolean;
@@ -36,6 +38,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [demo, setDemo] = useState(false);
   const [corpusSource, setCorpusSource] = useState({ url: '', live: false });
+  const [readOnly, setReadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -47,6 +50,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setPermissions(j.data.permissions);
       setDemo(!!j.data.demo);
       setCorpusSource(j.data.corpusSource);
+      setReadOnly(!!j.data.readOnly);
     } catch {
       // A failed session read leaves `user` null, which sends the chrome to
       // the login screen — the right outcome either way.
@@ -63,6 +67,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setPermissions(j.data.permissions);
         setDemo(!!j.data.demo);
         setCorpusSource(j.data.corpusSource);
+        setReadOnly(!!j.data.readOnly);
         setLoading(false);
       })
       .catch(() => {
@@ -88,12 +93,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       permissions,
       demo,
       corpusSource,
+      readOnly,
       loading,
       can: (p: string) => permissions.includes(p),
       logout,
       refresh,
     }),
-    [user, permissions, demo, corpusSource, loading, logout, refresh],
+    [user, permissions, demo, corpusSource, readOnly, loading, logout, refresh],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

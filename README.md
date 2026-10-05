@@ -291,6 +291,40 @@ Nothing here deploys itself; each step is deliberate.
 3. **Public site** (`hadith_platform`): build with `DASHBOARD_URL` set to that
    host name; `/login` and `/verification` redirect there. Ship after step 2.
 
+### A shared read-only deployment, on the real corpus
+
+The least setup that still gives people the actual dashboard: point it at the
+corpus that already exists and refuse every write.
+
+```
+NEXT_PUBLIC_API_URL    = https://api.openhadith.org/api
+STUDIO_DATABASE_URL    = postgresql://…      (the dashboard's own, still required)
+DASHBOARD_LOCAL_SIGNIN = true
+```
+
+- **Nothing can be changed.** Every endpoint that writes passes through one
+  guard, so the refusal is server-side, not a matter of which buttons were
+  drawn. Drafts, approvals, publishing, account and permission changes all
+  answer 403.
+- **Sign-in is picking a name from a list.** No password, because nobody holds
+  credentials for the corpus's accounts. That is why it forces read-only on by
+  itself: a session anyone can start must not be able to write.
+- Everyone signs in with `view` only, whatever role their profile carries, so
+  the interface offers exactly what the server will allow. The admin screens
+  need `admin` and redirect away.
+- A **خوێندنەوە** chip sits in the top bar and a banner on the sign-in screen,
+  so nobody mistakes it for the real thing.
+
+It still needs its own database — the queue, drafts and audit trail live there,
+and without one the main screens have nothing to show. Seed it with
+`npm run db:seed`, which builds the demo queue from whatever corpus
+`NEXT_PUBLIC_API_URL` points at.
+
+Set `DASHBOARD_READ_ONLY=true` on its own to keep real password sign-in while
+still refusing writes — the shape to use once accounts exist.
+
+---
+
 ### A test deployment (e.g. Vercel), on a copy of the corpus
 
 This needs the same two things any deployment does — a reachable API and a
