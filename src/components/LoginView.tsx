@@ -18,7 +18,7 @@ const DEV_ACCOUNTS: Array<[string, string]> = [
 ];
 const DEV_PASSWORD = 'hadith-dev';
 
-export default function LoginView({ dev }: { dev: boolean }) {
+export default function LoginView({ dev, apiWarning }: { dev: boolean; apiWarning?: string | null }) {
   const params = useSearchParams();
   const { message } = App.useApp();
   const [form] = Form.useForm<{ email: string; password: string }>();
@@ -82,6 +82,20 @@ export default function LoginView({ dev }: { dev: boolean }) {
             </Text>
           </div>
         </div>
+
+        {apiWarning && (
+          <Alert
+            type="warning"
+            showIcon
+            title="پەیوەندی بە API ـی حەدیس نەکرا"
+            description={
+              <span style={{ fontSize: 15, lineHeight: 1.8 }}>
+                چوونەژوورەوە کار ناکات تا <code dir="ltr">NEXT_PUBLIC_API_URL</code> ئاماژە بە
+                API یەکی گەیشتوو بکات. ئێستا: <code dir="ltr">{apiWarning}</code>
+              </span>
+            }
+          />
+        )}
 
         <Card styles={{ body: { padding: 22 } }}>
           <Form form={form} layout="vertical" onFinish={signIn} requiredMark={false} disabled={busy}>

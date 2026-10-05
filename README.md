@@ -291,6 +291,36 @@ Nothing here deploys itself; each step is deliberate.
 3. **Public site** (`hadith_platform`): build with `DASHBOARD_URL` set to that
    host name; `/login` and `/verification` redirect there. Ship after step 2.
 
+### A test deployment (e.g. Vercel), on a copy of the corpus
+
+This needs the same two things any deployment does — a reachable API and a
+reachable `STUDIO_DATABASE_URL` — it is just that both point at copies instead
+of the real corpus. Nothing here is optional: without them the login page
+loads, but every sign-in fails.
+
+1. Host a copy of the corpus and a copy of the dashboard's workflow database
+   somewhere reachable from the internet (Neon or Supabase both work; see the
+   backend's own README for building the corpus copy).
+2. Deploy the API (`hadith_platform_backend`) somewhere that runs a Node
+   server — Vercel's functions cannot host it, since it is not this project.
+3. On the dashboard's host, set:
+   - `NEXT_PUBLIC_API_URL` → that API's URL
+   - `STUDIO_DATABASE_URL` → the workflow database copy
+   - `NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS=true` → lists the seeded test accounts
+     (`zana@muhaqqiq.org` etc., password `hadith-dev`) on `/login`, so testers
+     don't need credentials emailed to them. Leave it unset for the real
+     deployment.
+
+**`NEXT_PUBLIC_*` values are compiled into the build, not read at runtime.**
+Setting or changing one and redeploying from already-built output does
+nothing — the host has to run a fresh `npm run build` after the change (on
+Vercel: redeploy; don't just edit the variable and expect it to apply).
+
+If sign-in fails, `/login` itself explains why: it pings the API before
+rendering and shows a banner with the exact URL and error when it cannot
+reach it. The chrome's corpus chip (`کۆپیی تاقیکردنەوە` / `داتای ڕاستەقینە`)
+is the same check surfaced after sign-in.
+
 ---
 
 ## Files
