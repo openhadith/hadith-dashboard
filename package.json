@@ -10,8 +10,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "e2e": "node scripts/e2e.mjs",
-    "db:init": "psql \"${STUDIO_DATABASE_URL:-postgresql://localhost:5432/hadith_studio}\" -v ON_ERROR_STOP=1 -f db/schema.sql && psql \"${STUDIO_DATABASE_URL:-postgresql://localhost:5432/hadith_studio}\" -v ON_ERROR_STOP=1 -f db/schema-entities.sql",
-    "db:setup": "createdb hadith_studio 2>/dev/null; psql -d hadith_studio -v ON_ERROR_STOP=1 -f db/schema.sql && psql -d hadith_studio -v ON_ERROR_STOP=1 -f db/schema-entities.sql && node db/seed.mjs",
+    "db:init": "node db/run-sql.mjs db/schema.sql db/schema-entities.sql",
+    "db:setup": "createdb hadith_studio 2>/dev/null; npm run db:init && npm run db:seed",
     "db:seed": "node db/seed.mjs",
     "db:reset": "dropdb --if-exists hadith_studio && npm run db:setup"
   },
